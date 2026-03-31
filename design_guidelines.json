@@ -1,0 +1,127 @@
+{
+  "theme_and_archetype": {
+    "theme": "Light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "description": "Industrial process control requires authority, clarity, and truth. The interface acts as a high-density, highly-readable control room. It employs an 'Industrial Precision' style: completely monochromatic UI where color is used strictly for functional signaling (alerts, status).",
+    "emotion": "Reliable, precise, safe, objective."
+  },
+  "typography": {
+    "font_family": {
+      "headings": "\"Chivo\", sans-serif",
+      "body": "\"IBM Plex Sans\", sans-serif",
+      "data_and_mono": "\"IBM Plex Mono\", monospace"
+    },
+    "scale": {
+      "h1": "text-4xl font-light tracking-tight text-zinc-950",
+      "h2": "text-2xl font-light tracking-tight text-zinc-900",
+      "h3": "text-lg font-medium tracking-tight text-zinc-900",
+      "kpi_value": "text-4xl sm:text-5xl font-light tracking-tighter font-mono text-zinc-950",
+      "body": "text-sm text-zinc-700 leading-relaxed",
+      "labels_and_overlines": "text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500"
+    },
+    "rules": [
+      "No generic sans-serif for numbers. Use IBM Plex Mono for all KPIs, tables, and sensor values.",
+      "Use radical weight contrast: extremely light weights for massive numbers/headings, bold weights for tiny labels.",
+      "Never center-align dense data or paragraphs. Strictly left-aligned or right-aligned for numbers."
+    ]
+  },
+  "color_palette": {
+    "background": {
+      "app": "bg-zinc-50",
+      "surface": "bg-white",
+      "overlay": "bg-zinc-950/20"
+    },
+    "text": {
+      "primary": "text-zinc-950",
+      "secondary": "text-zinc-600",
+      "muted": "text-zinc-400"
+    },
+    "border": "border-zinc-200",
+    "semantic": {
+      "primary_action": "bg-[#002FA7] text-white hover:bg-[#002FA7]/90",
+      "success": "bg-[#16A34A] text-white",
+      "success_subtle": "bg-green-50 text-green-700 border-green-200",
+      "warning": "bg-[#FACC15] text-zinc-950",
+      "warning_subtle": "bg-yellow-50 text-yellow-800 border-yellow-200",
+      "critical": "bg-[#E11D48] text-white",
+      "critical_subtle": "bg-red-50 text-red-700 border-red-200"
+    },
+    "rules": [
+      "95% of the UI must be monochrome (zinc/white).",
+      "Color is Function Only. Never use primary blue or semantic colors for decoration.",
+      "Signal red, warning yellow, and safety green are reserved strictly for machine status, RCA alerts, and condition monitoring."
+    ]
+  },
+  "layout_and_spacing": {
+    "strategy": "Mode B: Control Room Grid",
+    "container": "w-full max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8",
+    "grid": "grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-6",
+    "spans": {
+      "kpi_summary": "col-span-1 md:col-span-3 lg:col-span-3",
+      "primary_chart": "col-span-1 md:col-span-9 lg:col-span-9",
+      "document_panel": "col-span-1 md:col-span-4 lg:col-span-3",
+      "rag_chat": "col-span-1 md:col-span-8 lg:col-span-9"
+    },
+    "rules": [
+      "F-Pattern hierarchy: Place the most critical plant metrics (OEE, Status) at the top left.",
+      "Zero dead space. Use `h-full` to ensure widgets stretch to match neighbors.",
+      "Containers with borders must have internal padding of `p-4` or `p-6`."
+    ]
+  },
+  "surface_and_borders": {
+    "style": "Grid Borders (The Technical Look)",
+    "rules": [
+      "Expose the skeleton. No soft shadows, no glassmorphism.",
+      "Use `rounded-none` or absolute minimum `rounded-sm` (2px) for all elements including buttons and inputs.",
+      "Containers should use a sharp 1px border `border-zinc-200` with flat white background.",
+      "Hovering a clickable card should darken the border to `border-zinc-400` and apply `-translate-y-[1px]`, avoiding heavy shadows."
+    ]
+  },
+  "motion_and_interaction": {
+    "rules": [
+      "Animations must be minimal and crisp, simulating rapid machine response.",
+      "Transition duration should be fast: `duration-150 ease-out`.",
+      "Focus states are critical for accessibility in a dense UI: `focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2`."
+    ]
+  },
+  "component_rules": {
+    "buttons": "Square edges (`rounded-none`). High contrast text. Use icon + text heavily for clarity.",
+    "tables": "Dense rows. Right-align all numeric data. Use subtle zebra striping (`even:bg-zinc-50/50`) to improve scannability of sensor logs.",
+    "forms_and_inputs": "Square borders. Label above input. Use Shadcn customized to `rounded-none`.",
+    "rag_interface": "Distinguish AI responses from user queries using background tints. User: `bg-white border border-zinc-200`. AI: `bg-zinc-50 border border-[#002FA7]/20 border-l-4 border-l-[#002FA7]`. Include structured block areas for Root Cause, Actions, and References.",
+    "charts": "Use Recharts. Minimal grid lines (dashed, faint). Monochromatic bars/lines unless representing status thresholds (where red/yellow lines indicate limits).",
+    "data_testid": "MANDATORY on all interactive and key informational elements. Example: `data-testid=\"rag-submit-button\"` or `data-testid=\"kpi-oee-value\"`."
+  },
+  "iconography": {
+    "library": "@phosphor-icons/react",
+    "installation": "yarn add @phosphor-icons/react",
+    "style": "Use `weight=\"regular\"` for standard icons, `weight=\"fill\"` for active states or critical status indicators. Keep sizes uniform (e.g., 16px or 20px) to align with dense text."
+  },
+  "media_urls": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1721244654346-9be0c0129e36?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxibHVlcHJpbnQlMjB0ZXh0dXJlfGVufDB8fHx8MTc3NDk3OTE0Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Subtle blueprint architectural texture. Apply at extremely low opacity (e.g., 3-5%) mixed with bg-zinc-50 for a technical watermark background in empty spaces or login screens.",
+      "category": "background_texture"
+    },
+    "control_room_scene": {
+      "url": "https://images.pexels.com/photos/32845700/pexels-photo-32845700.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Engineer monitoring screens in a manufacturing plant. Use for auth/login page hero or as a placeholder for a 'Plant Overview' report cover.",
+      "category": "hero_image"
+    },
+    "machinery_overview": {
+      "url": "https://images.pexels.com/photos/34718930/pexels-photo-34718930.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Modern factory interior showcasing industrial machinery. Useful for 'Plant Area' visual navigation or header banners in specific modules.",
+      "category": "feature_image"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Load Chivo, IBM Plex Sans, and IBM Plex Mono via Google Fonts in index.html or global css.",
+    "Install and use @phosphor-icons/react for all icons.",
+    "Strictly adhere to the `rounded-none` and sharp grid border styling to maintain the Archetype 4 Swiss industrial look.",
+    "For the RAG Interface, build a structured view that breaks down responses into 'Summary', 'Root Cause', 'Recommended Action', and 'References'. Do not just dump text.",
+    "Implement condition monitoring data with Recharts, keeping axes minimal and emphasizing the actual data line/bar.",
+    "Use grid layouts with zero nested gaps where possible (employ border-collapse strategies to expose the skeleton).",
+    "Ensure the application works seamlessly on wide screens (Control Room monitors) by using `max-w-[1920px]` and stretching columns.",
+    "Add `data-testid` attributes to all forms, buttons, links, and major display widgets."
+  ]
+}
