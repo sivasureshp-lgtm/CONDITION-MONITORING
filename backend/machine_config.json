@@ -1,0 +1,199 @@
+{
+  "plants": {
+    "A": {
+      "name": "Plant A",
+      "machines": {
+        "A1": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", 
+            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["current"]
+        },
+        "A2": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
+            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["current"]
+        },
+        "A3": {
+          "motors": ["Tube Rotation", "Feeder", "Main Conveyor", "Stacker"],
+          "parameters": ["current"]
+        },
+        "A4": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
+            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Invert", "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Invert", "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["current"]
+        }
+      }
+    },
+    "G": {
+      "name": "Plant G",
+      "machines": {
+        "G1": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
+            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["current"]
+        },
+        "G2": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
+            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["current"]
+        },
+        "G3A": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", "Gob Distributor",
+            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Main Conveyor (Shared)", "Ware Transfer (Shared)", "Cross Conveyor (Shared)", "Stacker (Shared)"
+          ],
+          "parameters": ["current"]
+        },
+        "G3B": {
+          "motors": [
+            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", "Gob Distributor",
+            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger"
+          ],
+          "parameters": ["current"],
+          "note": "Shares Main Conveyor, Ware Transfer, Cross Conveyor, Stacker with G3A"
+        }
+      }
+    },
+    "K": {
+      "name": "Plant K",
+      "machines": {
+        "K1": {
+          "motors": [
+            "Feeder", "Tube Rotation", "Tube Height", "Shear", "Gob Distributor",
+            "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["i2t", "temperature"]
+        },
+        "K2": {
+          "motors": [
+            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
+            "Cross Conveyor", "Stacker"
+          ],
+          "parameters": ["current", "temperature"]
+        },
+        "K3": {
+          "motors": [
+            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
+            "Cross Conveyor", "Stacker"
+          ],
+          "parameters": ["current", "temperature"]
+        },
+        "K4": {
+          "motors": [
+            "Feeder", "Tube Rotation", "Tube Height", "Shear", "Gob Distributor",
+            "Main Conveyor", "Ware Transfer", "Cross Conveyor",
+            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+          ],
+          "parameters": ["i2t", "temperature"]
+        }
+      }
+    },
+    "E": {
+      "name": "Plant E",
+      "machines": {
+        "E1": {
+          "motors": [
+            "Tube Rotation", "Feeder", "Drum", "Pusher",
+            "Main Conveyor", "Ware Transfer", "Cross Conveyor", "Stacker"
+          ],
+          "parameters": ["current", "temperature"]
+        },
+        "E2": {
+          "motors": [
+            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
+            "Cross Conveyor", "Stacker"
+          ],
+          "parameters": ["current", "temperature"]
+        },
+        "E3": {
+          "motors": [
+            "Tube Rotation", "Feeder", "Drum", "Pusher",
+            "Main Conveyor", "Ware Transfer", "Cross Conveyor", "Stacker"
+          ],
+          "parameters": ["current", "temperature"]
+        }
+      }
+    }
+  },
+  "parameter_units": {
+    "current": "A",
+    "temperature": "°C",
+    "i2t": "A²s"
+  }
+}

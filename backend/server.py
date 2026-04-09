@@ -26,8 +26,14 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 import asyncio
 
+import json
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Load machine configuration
+with open(ROOT_DIR / 'machine_config.json', 'r') as f:
+    MACHINE_CONFIG = json.load(f)
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
