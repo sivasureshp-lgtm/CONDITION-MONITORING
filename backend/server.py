@@ -15,7 +15,9 @@ from chromadb.utils import embedding_functions
 from sentence_transformers import SentenceTransformer
 import PyPDF2
 import io
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+import base64
+from io import BytesIO
 import pytesseract
 import openpyxl
 import gspread
@@ -101,8 +103,79 @@ class ConditionMonitoringCreate(BaseModel):
     entry_source: str = "Office"  # Field or Office
     verified_by: Optional[str] = None
     notes: Optional[str] = None
+    photo_base64: Optional[str] = None  # Base64 encoded photo
 
 # Helper Functions
+def add_timestamp_watermark(photo_base64: str) -> str:
+    """Add timestamp watermark to photo"""
+    try:
+        # Decode base64 image
+        image_data = base64.b64decode(photo_base64.split(',')[1] if ',' in photo_base64 else photo_base64)
+        image = Image.open(BytesIO(image_data))
+        
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Create drawing context
+        draw = ImageDraw.Draw(image)
+        
+        # Timestamp text
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        # Calculate position (bottom-right corner)
+        width, height = image.size
+        
+        # Use default font (try to use a better font if available)
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+        except:
+            font = ImageFont.load_default()
+        
+        # Get text size
+        bbox = draw.textbbox((0, 0), timestamp, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        # Position: bottom-right with padding
+        x = width - text_width - 20
+        y = height - text_height - 20
+        
+        # Draw semi-transparent background
+        padding = 10
+        draw.rectangle(
+            [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
+            fill=(0, 0, 0, 180)
+        )
+        
+        # Draw text
+        draw.text((x, y), timestamp, fill=(255, 255, 255), font=font)
+        
+        # Add "VERIFIED" text
+        verified_text = "VERIFIED"
+        bbox_verified = draw.textbbox((0, 0), verified_text, font=font)
+        verified_width = bbox_verified[2] - bbox_verified[0]
+        
+        x_verified = width - verified_width - 20
+        y_verified = y - text_height - 20
+        
+        draw.rectangle(
+            [x_verified - padding, y_verified - padding, x_verified + verified_width + padding, y_verified + text_height + padding],
+            fill=(0, 47, 167, 200)  # Neutral Glass blue
+        )
+        draw.text((x_verified, y_verified), verified_text, fill=(255, 255, 255), font=font)
+        
+        # Convert back to base64
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG", quality=85)
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        
+        return f"data:image/jpeg;base64,{img_str}"
+    
+    except Exception as e:
+        logging.error(f"Watermark error: {e}")
+        return photo_base64  # Return original if watermark fails
+
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """Extract text from PDF"""
     try:
@@ -376,6 +449,13 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     
     bulk_entry_flag = recent_entries > 5  # Flag if more than 5 entries in 1 minute
     
+    # Process photo if provided
+    photo_with_timestamp = None
+    has_photo = False
+    if data.photo_base64:
+        photo_with_timestamp = add_timestamp_watermark(data.photo_base64)
+        has_photo = True
+    
     doc = {
         "plant": data.plant,
         "machine": data.machine,
@@ -390,13 +470,16 @@ async def add_condition_data(data: ConditionMonitoringCreate):
         "verified_by": data.verified_by,
         "notes": data.notes,
         "bulk_entry_flag": bulk_entry_flag,
-        "verified": data.entry_source == "Field"  # Field entries auto-verified
+        "has_photo": has_photo,
+        "photo": photo_with_timestamp,
+        "verified": data.entry_source == "Field" or has_photo  # Photo = auto-verified
     }
     await db.condition_monitoring.insert_one(doc)
     return {
         "message": "Data added successfully", 
         "status": status,
-        "bulk_entry_flag": bulk_entry_flag
+        "bulk_entry_flag": bulk_entry_flag,
+        "has_photo": has_photo
     }
 
 @api_router.get("/condition-monitoring/plant/{plant}")

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Download, Plus, Warning as WarningIcon, XCircle } from "@phosphor-icons/react";
+import { Download, Plus, Warning as WarningIcon, XCircle, Camera, Image as ImageIcon } from "@phosphor-icons/react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -51,8 +51,10 @@ const ConditionMonitoring = () => {
     warning_current: "",
     entry_source: "Field",
     verified_by: "",
-    notes: ""
+    notes: "",
+    photo_base64: null
   });
+  const [photoPreview, setPhotoPreview] = useState(null);
 
   useEffect(() => {
     fetchActiveAlarms();
@@ -96,7 +98,11 @@ const ConditionMonitoring = () => {
         normal: item.normal_current,
         warning: item.warning_current,
         motor: item.motor,
-        status: item.status
+        status: item.status,
+        photo: item.photo,
+        has_photo: item.has_photo,
+        verified: item.verified,
+        entry_source: item.entry_source
       }));
       setChartData(transformed);
     } catch (e) {
@@ -105,6 +111,23 @@ const ConditionMonitoring = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePhotoCapture = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, photo_base64: reader.result });
+        setPhotoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setFormData({ ...formData, photo_base64: null });
+    setPhotoPreview(null);
   };
 
   const handleAddData = async (e) => {
@@ -119,7 +142,8 @@ const ConditionMonitoring = () => {
         warning_current: parseFloat(formData.warning_current),
         entry_source: formData.entry_source,
         verified_by: formData.verified_by || null,
-        notes: formData.notes || null
+        notes: formData.notes || null,
+        photo_base64: formData.photo_base64
       });
       
       if (response.data.bulk_entry_flag) {
@@ -135,8 +159,10 @@ const ConditionMonitoring = () => {
         warning_current: "",
         entry_source: "Field",
         verified_by: "",
-        notes: ""
+        notes: "",
+        photo_base64: null
       });
+      setPhotoPreview(null);
       setShowAddForm(false);
       
       fetchActiveAlarms();
@@ -294,6 +320,50 @@ const ConditionMonitoring = () => {
                 className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none font-mono"
                 required
               />
+            </div>
+
+            <div className="md:col-span-6 border-t border-zinc-200 pt-4 mt-2">
+              <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-3 block">
+                📸 Verification Photo (Recommended)
+              </label>
+              <p className="text-xs text-zinc-600 mb-3">Add photo proof for field verification. Timestamp will be added automatically.</p>
+              
+              {!photoPreview ? (
+                <div className="flex items-center space-x-3">
+                  <label className="flex items-center space-x-2 px-4 py-2 border-2 border-dashed border-zinc-300 hover:border-[#002FA7] bg-white cursor-pointer transition-all duration-150 rounded-none">
+                    <Camera size={20} weight="bold" className="text-[#002FA7]" />
+                    <span className="text-sm text-zinc-700">Capture / Upload Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handlePhotoCapture}
+                      className="hidden"
+                      data-testid="photo-input"
+                    />
+                  </label>
+                  <span className="text-xs text-zinc-500">Camera or Gallery</span>
+                </div>
+              ) : (
+                <div className="relative inline-block">
+                  <img 
+                    src={photoPreview} 
+                    alt="Preview" 
+                    className="w-64 h-48 object-cover border-2 border-[#002FA7]"
+                  />
+                  <button
+                    type="button"
+                    onClick={removePhoto}
+                    className="absolute top-2 right-2 bg-[#E11D48] text-white p-2 hover:bg-[#E11D48]/90 transition-all duration-150"
+                  >
+                    <XCircle size={20} weight="fill" />
+                  </button>
+                  <div className="mt-2 flex items-center space-x-2 text-xs">
+                    <ImageIcon size={16} weight="fill" className="text-[#16A34A]" />
+                    <span className="text-[#16A34A] font-medium">Photo ready - Timestamp will be added on submit</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-zinc-200 pt-4 mt-2">
@@ -526,6 +596,8 @@ const ConditionMonitoring = () => {
                           <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Normal (A)</th>
                           <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Warning (A)</th>
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Status</th>
+                          <th className="text-center px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Photo</th>
+                          <th className="text-center px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Source</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -543,6 +615,28 @@ const ConditionMonitoring = () => {
                                 'bg-red-50 text-red-700'
                               }`}>
                                 {row.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {row.has_photo ? (
+                                <button
+                                  onClick={() => window.open(row.photo, '_blank')}
+                                  className="inline-flex items-center space-x-1 text-[#002FA7] hover:text-[#002FA7]/80 transition-colors"
+                                  title="View photo with timestamp"
+                                >
+                                  <Camera size={18} weight="fill" />
+                                  <span className="text-xs">View</span>
+                                </button>
+                              ) : (
+                                <span className="text-xs text-zinc-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              <span className={`px-2 py-1 text-xs font-bold uppercase tracking-wider rounded-none ${
+                                row.entry_source === 'Field' ? 'bg-[#002FA7] text-white' :
+                                'bg-zinc-200 text-zinc-700'
+                              }`}>
+                                {row.entry_source || 'N/A'}
                               </span>
                             </td>
                           </tr>
