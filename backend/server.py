@@ -283,6 +283,126 @@ Provide a comprehensive troubleshooting analysis in JSON format."""
         )
 
 # API Routes
+@api_router.get("/machine-config/{plant}/{machine}")
+async def get_machine_config(plant: str, machine: str):
+    """Get motor configuration for a specific machine"""
+    try:
+        if plant in MACHINE_CONFIG["plants"] and machine in MACHINE_CONFIG["plants"][plant]["machines"]:
+            return MACHINE_CONFIG["plants"][plant]["machines"][machine]
+        else:
+            raise HTTPException(status_code=404, detail="Machine configuration not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/condition-monitoring/bulk")
+async def add_bulk_condition_data(data: dict):
+    """Add bulk condition monitoring data for entire machine"""
+    try:
+        plant = data.get("plant")
+        machine = data.get("machine")
+        readings_list = data.get("readings", [])
+        technician = data.get("technician")
+        photo_base64 = data.get("photo_base64")
+        entry_source = data.get("entry_source", "Field")
+        
+        timestamp = datetime.now(timezone.utc)
+        
+        # Process photo if provided
+        photo_with_timestamp = None
+        has_photo = False
+        if photo_base64:
+            photo_with_timestamp = add_timestamp_watermark(photo_base64)
+            has_photo = True
+        
+        # Process each reading
+        inserted_count = 0
+        alarm_count = 0
+        warning_count = 0
+        
+        for reading in readings_list:
+            motor = reading.get("motor")
+            
+            # Determine status for each parameter
+            status = "OK"
+            
+            # Check current
+            if reading.get("current"):
+                current = float(reading.get("current"))
+                normal_current = float(reading.get("normal_current", 0))
+                warning_current = float(reading.get("warning_current", 0))
+                
+                if current >= warning_current:
+                    status = "Alarm"
+                    alarm_count += 1
+                elif current >= normal_current:
+                    status = "Warning"
+                    warning_count += 1
+            
+            # Check temperature
+            if reading.get("temperature"):
+                temp = float(reading.get("temperature"))
+                normal_temp = float(reading.get("normal_temperature", 0))
+                warning_temp = float(reading.get("warning_temperature", 0))
+                
+                if temp >= warning_temp:
+                    status = "Alarm"
+                    alarm_count += 1
+                elif temp >= normal_temp and status == "OK":
+                    status = "Warning"
+                    warning_count += 1
+            
+            # Check I2t
+            if reading.get("i2t"):
+                i2t = float(reading.get("i2t"))
+                normal_i2t = float(reading.get("normal_i2t", 0))
+                warning_i2t = float(reading.get("warning_i2t", 0))
+                
+                if i2t >= warning_i2t:
+                    status = "Alarm"
+                    alarm_count += 1
+                elif i2t >= normal_i2t and status == "OK":
+                    status = "Warning"
+                    warning_count += 1
+            
+            doc = {
+                "plant": plant,
+                "machine": machine,
+                "motor": motor,
+                "current": float(reading.get("current")) if reading.get("current") else None,
+                "normal_current": float(reading.get("normal_current")) if reading.get("normal_current") else None,
+                "warning_current": float(reading.get("warning_current")) if reading.get("warning_current") else None,
+                "temperature": float(reading.get("temperature")) if reading.get("temperature") else None,
+                "normal_temperature": float(reading.get("normal_temperature")) if reading.get("normal_temperature") else None,
+                "warning_temperature": float(reading.get("warning_temperature")) if reading.get("warning_temperature") else None,
+                "i2t": float(reading.get("i2t")) if reading.get("i2t") else None,
+                "normal_i2t": float(reading.get("normal_i2t")) if reading.get("normal_i2t") else None,
+                "warning_i2t": float(reading.get("warning_i2t")) if reading.get("warning_i2t") else None,
+                "status": status,
+                "timestamp": timestamp.isoformat(),
+                "entry_timestamp": timestamp.isoformat(),
+                "entry_source": entry_source,
+                "verified_by": technician,
+                "notes": None,
+                "bulk_entry_flag": False,
+                "has_photo": has_photo,
+                "photo": photo_with_timestamp,
+                "verified": entry_source == "Field" or has_photo
+            }
+            
+            await db.condition_monitoring.insert_one(doc)
+            inserted_count += 1
+        
+        return {
+            "message": "Bulk readings submitted successfully",
+            "inserted_count": inserted_count,
+            "alarm_count": alarm_count,
+            "warning_count": warning_count
+        }
+    
+    except Exception as e:
+        logging.error(f"Bulk entry error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/")
 async def root():
     return {"message": "Process Control Expert System API"}

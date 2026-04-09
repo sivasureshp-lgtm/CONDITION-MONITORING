@@ -3,14 +3,16 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import ConditionMonitoring from "@/pages/ConditionMonitoring";
 import Dashboard from "@/pages/Dashboard";
-import { GearSix, ChartLine } from "@phosphor-icons/react";
+import BulkEntry from "@/pages/BulkEntry";
+import { GearSix, ChartLine, ListChecks } from "@phosphor-icons/react";
 
 const Navigation = () => {
   const location = useLocation();
   
   const navItems = [
     { path: "/", label: "Dashboard", icon: GearSix },
-    { path: "/monitoring", label: "Condition Monitoring", icon: ChartLine },
+    { path: "/bulk-entry", label: "Add Readings", icon: ListChecks },
+    { path: "/monitoring", label: "View Data", icon: ChartLine },
   ];
   
   return (
@@ -61,6 +63,7 @@ function App() {
         <Navigation />
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/bulk-entry" element={<BulkEntry />} />
           <Route path="/monitoring" element={<ConditionMonitoring />} />
         </Routes>
       </BrowserRouter>
