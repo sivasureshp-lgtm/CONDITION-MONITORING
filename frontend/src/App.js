@@ -1,19 +1,15 @@
 import { useState } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
-import ExpertQuery from "@/pages/ExpertQuery";
-import KnowledgeBase from "@/pages/KnowledgeBase";
 import ConditionMonitoring from "@/pages/ConditionMonitoring";
 import Dashboard from "@/pages/Dashboard";
-import { GearSix, Files, ChartLine, ChatCircleDots } from "@phosphor-icons/react";
+import { GearSix, ChartLine } from "@phosphor-icons/react";
 
 const Navigation = () => {
   const location = useLocation();
   
   const navItems = [
     { path: "/", label: "Dashboard", icon: GearSix },
-    { path: "/expert", label: "Expert Query", icon: ChatCircleDots },
-    { path: "/knowledge", label: "Knowledge Base", icon: Files },
     { path: "/monitoring", label: "Condition Monitoring", icon: ChartLine },
   ];
   
@@ -21,11 +17,11 @@ const Navigation = () => {
     <nav className="border-b border-zinc-200 bg-white">
       <div className="w-full max-w-[1920px] mx-auto px-4 md:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <GearSix size={32} weight="fill" className="text-[#002FA7]" />
             <div>
-              <h1 className="text-xl font-light tracking-tight text-zinc-950">Process Control Expert</h1>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">Instrumentation & Diagnostics</p>
+              <h1 className="text-xl font-light tracking-tight text-zinc-950">Neutral Glass</h1>
+              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">Instrumentation Department</p>
             </div>
           </div>
           
@@ -65,8 +61,6 @@ function App() {
         <Navigation />
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/expert" element={<ExpertQuery />} />
-          <Route path="/knowledge" element={<KnowledgeBase />} />
           <Route path="/monitoring" element={<ConditionMonitoring />} />
         </Routes>
       </BrowserRouter>

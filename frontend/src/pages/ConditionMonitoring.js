@@ -48,7 +48,10 @@ const ConditionMonitoring = () => {
     motor: "",
     current: "",
     normal_current: "",
-    warning_current: ""
+    warning_current: "",
+    entry_source: "Field",
+    verified_by: "",
+    notes: ""
   });
 
   useEffect(() => {
@@ -107,14 +110,21 @@ const ConditionMonitoring = () => {
   const handleAddData = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API}/condition-monitoring`, {
+      const response = await axios.post(`${API}/condition-monitoring`, {
         plant: formData.plant,
         machine: formData.machine,
         motor: formData.motor,
         current: parseFloat(formData.current),
         normal_current: parseFloat(formData.normal_current),
-        warning_current: parseFloat(formData.warning_current)
+        warning_current: parseFloat(formData.warning_current),
+        entry_source: formData.entry_source,
+        verified_by: formData.verified_by || null,
+        notes: formData.notes || null
       });
+      
+      if (response.data.bulk_entry_flag) {
+        alert("⚠️ Warning: Multiple entries detected in short time. Please verify data accuracy.");
+      }
       
       setFormData({
         plant: "A",
@@ -122,7 +132,10 @@ const ConditionMonitoring = () => {
         motor: "",
         current: "",
         normal_current: "",
-        warning_current: ""
+        warning_current: "",
+        entry_source: "Field",
+        verified_by: "",
+        notes: ""
       });
       setShowAddForm(false);
       
@@ -281,6 +294,47 @@ const ConditionMonitoring = () => {
                 className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none font-mono"
                 required
               />
+            </div>
+
+            <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-zinc-200 pt-4 mt-2">
+              <div>
+                <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Entry Source *</label>
+                <select
+                  data-testid="form-entry-source-select"
+                  value={formData.entry_source}
+                  onChange={(e) => setFormData({ ...formData, entry_source: e.target.value })}
+                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+                  required
+                >
+                  <option value="Field">Field (On-site)</option>
+                  <option value="Office">Office</option>
+                </select>
+                <p className="text-xs text-zinc-500 mt-1">Field entries are auto-verified</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Verified By</label>
+                <input
+                  data-testid="form-verified-by-input"
+                  type="text"
+                  value={formData.verified_by}
+                  onChange={(e) => setFormData({ ...formData, verified_by: e.target.value })}
+                  placeholder="Technician name"
+                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Notes</label>
+                <input
+                  data-testid="form-notes-input"
+                  type="text"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Optional notes"
+                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+                />
+              </div>
             </div>
 
             <div className="md:col-span-6 flex justify-end space-x-3">

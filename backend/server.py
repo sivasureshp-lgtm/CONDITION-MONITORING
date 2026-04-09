@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import chromadb
 from chromadb.utils import embedding_functions
 from sentence_transformers import SentenceTransformer
@@ -98,6 +98,9 @@ class ConditionMonitoringCreate(BaseModel):
     current: float
     normal_current: float
     warning_current: float
+    entry_source: str = "Office"  # Field or Office
+    verified_by: Optional[str] = None
+    notes: Optional[str] = None
 
 # Helper Functions
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -360,6 +363,19 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     elif data.current >= data.normal_current:
         status = "Warning"
     
+    reading_timestamp = datetime.now(timezone.utc)
+    entry_timestamp = datetime.now(timezone.utc)
+    
+    # Check for suspicious bulk entry (multiple readings within 1 minute)
+    recent_entries = await db.condition_monitoring.count_documents({
+        "plant": data.plant,
+        "entry_timestamp": {
+            "$gte": (entry_timestamp - timedelta(minutes=1)).isoformat()
+        }
+    })
+    
+    bulk_entry_flag = recent_entries > 5  # Flag if more than 5 entries in 1 minute
+    
     doc = {
         "plant": data.plant,
         "machine": data.machine,
@@ -368,10 +384,20 @@ async def add_condition_data(data: ConditionMonitoringCreate):
         "normal_current": data.normal_current,
         "warning_current": data.warning_current,
         "status": status,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": reading_timestamp.isoformat(),
+        "entry_timestamp": entry_timestamp.isoformat(),
+        "entry_source": data.entry_source,
+        "verified_by": data.verified_by,
+        "notes": data.notes,
+        "bulk_entry_flag": bulk_entry_flag,
+        "verified": data.entry_source == "Field"  # Field entries auto-verified
     }
     await db.condition_monitoring.insert_one(doc)
-    return {"message": "Data added successfully", "status": status}
+    return {
+        "message": "Data added successfully", 
+        "status": status,
+        "bulk_entry_flag": bulk_entry_flag
+    }
 
 @api_router.get("/condition-monitoring/plant/{plant}")
 async def get_plant_data(plant: str, limit: int = 1000):
