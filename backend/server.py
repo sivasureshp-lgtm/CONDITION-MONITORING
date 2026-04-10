@@ -53,8 +53,28 @@ except:
         metadata={"description": "Plant instrumentation knowledge base"}
     )
 
-# LLM Setup
-EMERGENT_KEY = os.environ.get('EMERGENT_LLM_KEY')
+# Google Sheets Configuration (will be added by user later)
+GOOGLE_SHEETS_ENABLED = os.environ.get('GOOGLE_SHEETS_ENABLED', 'false').lower() == 'true'
+GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID', '')
+GOOGLE_SERVICE_ACCOUNT_FILE = ROOT_DIR / 'service_account.json'
+
+# Google Sheets client (if enabled)
+sheets_service = None
+if GOOGLE_SHEETS_ENABLED and GOOGLE_SERVICE_ACCOUNT_FILE.exists():
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+        
+        scopes = ['https://www.googleapis.com/auth/spreadsheets']
+        creds = ServiceAccountCredentials.from_service_account_file(
+            str(GOOGLE_SERVICE_ACCOUNT_FILE), 
+            scopes=scopes
+        )
+        sheets_service = gspread.authorize(creds)
+        logging.info("✅ Google Sheets integration enabled")
+    except Exception as e:
+        logging.error(f"Google Sheets setup error: {e}")
+        sheets_service = None
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -216,6 +236,47 @@ def extract_text_from_excel(file_bytes: bytes) -> str:
     except Exception as e:
         logging.error(f"Excel extraction error: {e}")
         return ""
+
+async def sync_to_google_sheets(readings_data):
+    """Sync readings to Google Sheets"""
+    if not GOOGLE_SHEETS_ENABLED or not sheets_service or not GOOGLE_SHEET_ID:
+        return False
+    
+    try:
+        sheet = sheets_service.open_by_key(GOOGLE_SHEET_ID).sheet1
+        
+        # Prepare rows
+        rows = []
+        for reading in readings_data:
+            row = [
+                reading.get('timestamp', ''),
+                reading.get('plant', ''),
+                reading.get('machine', ''),
+                reading.get('motor', ''),
+                reading.get('current', ''),
+                reading.get('temperature', ''),
+                reading.get('i2t', ''),
+                reading.get('normal_current', ''),
+                reading.get('warning_current', ''),
+                reading.get('normal_temperature', ''),
+                reading.get('warning_temperature', ''),
+                reading.get('normal_i2t', ''),
+                reading.get('warning_i2t', ''),
+                reading.get('status', ''),
+                reading.get('verified_by', ''),
+                reading.get('entry_source', ''),
+                'Yes' if reading.get('has_photo') else 'No'
+            ]
+            rows.append(row)
+        
+        # Append rows
+        sheet.append_rows(rows)
+        logging.info(f"✅ Synced {len(rows)} readings to Google Sheets")
+        return True
+    
+    except Exception as e:
+        logging.error(f"Google Sheets sync error: {e}")
+        return False
 
 async def generate_rag_response(query: str, context_docs: List[Dict], machine: str = None) -> RagResponse:
     """Generate structured RAG response using LLM"""
@@ -392,11 +453,45 @@ async def add_bulk_condition_data(data: dict):
             await db.condition_monitoring.insert_one(doc)
             inserted_count += 1
         
+        # Sync to Google Sheets if enabled
+        sheets_synced = False
+        if GOOGLE_SHEETS_ENABLED:
+            # Prepare data for sheets
+            sheets_data = []
+            for reading in readings_list:
+                motor = reading.get("motor")
+                # Find the corresponding doc we just inserted
+                for r in readings_list:
+                    if r.get("motor") == motor:
+                        sheets_data.append({
+                            'timestamp': timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                            'plant': plant,
+                            'machine': machine,
+                            'motor': motor,
+                            'current': reading.get('current', ''),
+                            'temperature': reading.get('temperature', ''),
+                            'i2t': reading.get('i2t', ''),
+                            'normal_current': reading.get('normal_current', ''),
+                            'warning_current': reading.get('warning_current', ''),
+                            'normal_temperature': reading.get('normal_temperature', ''),
+                            'warning_temperature': reading.get('warning_temperature', ''),
+                            'normal_i2t': reading.get('normal_i2t', ''),
+                            'warning_i2t': reading.get('warning_i2t', ''),
+                            'status': 'Alarm' if reading.get('current', 0) >= reading.get('warning_current', 999) or reading.get('temperature', 0) >= reading.get('warning_temperature', 999) or reading.get('i2t', 0) >= reading.get('warning_i2t', 999) else ('Warning' if reading.get('current', 0) >= reading.get('normal_current', 999) or reading.get('temperature', 0) >= reading.get('normal_temperature', 999) or reading.get('i2t', 0) >= reading.get('normal_i2t', 999) else 'OK'),
+                            'verified_by': technician,
+                            'entry_source': entry_source,
+                            'has_photo': has_photo
+                        })
+                        break
+            
+            sheets_synced = await sync_to_google_sheets(sheets_data)
+        
         return {
             "message": "Bulk readings submitted successfully",
             "inserted_count": inserted_count,
             "alarm_count": alarm_count,
-            "warning_count": warning_count
+            "warning_count": warning_count,
+            "sheets_synced": sheets_synced
         }
     
     except Exception as e:
