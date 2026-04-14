@@ -380,7 +380,7 @@ const BulkEntry = () => {
 
               <div>
                 <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-3 block">
-                  Technician Name *
+                  Engineer's Name *
                 </label>
                 <input
                   type="text"
