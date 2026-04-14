@@ -1,8 +1,17 @@
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Form
+"""
+Neutral Glass - Condition Monitoring System
+Backend Server (Render Free Tier Edition)
+- No MongoDB (removed)
+- Google Sheets = primary database
+- Cloudinary = photo storage
+- Self-ping = keeps Render free tier awake
+"""
+
+from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
@@ -10,23 +19,12 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
-import chromadb
-from chromadb.utils import embedding_functions
-from sentence_transformers import SentenceTransformer
-import PyPDF2
-import io
 from PIL import Image, ImageDraw, ImageFont
 import base64
 from io import BytesIO
-import pytesseract
-import openpyxl
-import gspread
-from google.oauth2.service_account import Credentials
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 import asyncio
-
-import json
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -35,90 +33,125 @@ load_dotenv(ROOT_DIR / '.env')
 with open(ROOT_DIR / 'machine_config.json', 'r') as f:
     MACHINE_CONFIG = json.load(f)
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-# ChromaDB setup
-chroma_client = chromadb.PersistentClient(path="/app/backend/chroma_db")
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Create or get collection
-try:
-    collection = chroma_client.get_collection(name="plant_knowledge")
-except:
-    collection = chroma_client.create_collection(
-        name="plant_knowledge",
-        metadata={"description": "Plant instrumentation knowledge base"}
-    )
-
-# Google Sheets Configuration (will be added by user later)
-GOOGLE_SHEETS_ENABLED = os.environ.get('GOOGLE_SHEETS_ENABLED', 'false').lower() == 'true'
+# ============================================================
+# GOOGLE SHEETS SETUP (Primary Database)
+# ============================================================
+GOOGLE_SHEETS_ENABLED = os.environ.get('GOOGLE_SHEETS_ENABLED', 'true').lower() == 'true'
 GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID', '')
-GOOGLE_SERVICE_ACCOUNT_FILE = ROOT_DIR / 'service_account.json'
 
-# Google Sheets client (if enabled)
 sheets_service = None
-if GOOGLE_SHEETS_ENABLED and GOOGLE_SERVICE_ACCOUNT_FILE.exists():
+readings_sheet = None
+config_ready = False
+
+def init_google_sheets():
+    """Initialize Google Sheets connection"""
+    global sheets_service, readings_sheet, config_ready
+    
+    if not GOOGLE_SHEET_ID:
+        logging.warning("⚠️ GOOGLE_SHEET_ID not set. Running in demo mode (data not persisted).")
+        return
+    
     try:
         import gspread
-        from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+        from google.oauth2.service_account import Credentials
         
-        scopes = ['https://www.googleapis.com/auth/spreadsheets']
-        creds = ServiceAccountCredentials.from_service_account_file(
-            str(GOOGLE_SERVICE_ACCOUNT_FILE), 
-            scopes=scopes
-        )
+        scopes = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
+        
+        # Check for service account JSON in environment variable (for Render)
+        sa_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '')
+        sa_file = ROOT_DIR / 'service_account.json'
+        
+        if sa_json:
+            # Parse JSON from environment variable
+            sa_info = json.loads(sa_json)
+            creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
+        elif sa_file.exists():
+            creds = Credentials.from_service_account_file(str(sa_file), scopes=scopes)
+        else:
+            logging.warning("⚠️ No Google service account credentials found. Running in demo mode.")
+            return
+        
         sheets_service = gspread.authorize(creds)
-        logging.info("✅ Google Sheets integration enabled")
+        
+        # Open the spreadsheet
+        spreadsheet = sheets_service.open_by_key(GOOGLE_SHEET_ID)
+        
+        # Get or create "Readings" worksheet
+        try:
+            readings_sheet = spreadsheet.worksheet("Readings")
+        except gspread.WorksheetNotFound:
+            readings_sheet = spreadsheet.add_worksheet(title="Readings", rows=10000, cols=20)
+            # Add headers
+            headers = [
+                "ID", "Timestamp", "Plant", "Machine", "Motor",
+                "Current", "Temperature", "I2t",
+                "Normal_Current", "Warning_Current",
+                "Normal_Temperature", "Warning_Temperature",
+                "Normal_I2t", "Warning_I2t",
+                "Status", "Verified_By", "Entry_Source",
+                "Has_Photo", "Photo_URL", "Bulk_Entry"
+            ]
+            readings_sheet.append_row(headers)
+        
+        config_ready = True
+        logging.info("✅ Google Sheets connected successfully")
+        
     except Exception as e:
-        logging.error(f"Google Sheets setup error: {e}")
-        sheets_service = None
+        logging.error(f"❌ Google Sheets setup error: {e}")
+        config_ready = False
 
-# Create the main app without a prefix
-app = FastAPI()
+init_google_sheets()
 
-# Create a router with the /api prefix
+# ============================================================
+# CLOUDINARY SETUP (Photo Storage)
+# ============================================================
+CLOUDINARY_ENABLED = False
+try:
+    cloudinary_url = os.environ.get('CLOUDINARY_URL', '')
+    if cloudinary_url:
+        import cloudinary
+        import cloudinary.uploader
+        cloudinary.config(cloudinary_url=cloudinary_url)
+        CLOUDINARY_ENABLED = True
+        logging.info("✅ Cloudinary connected for photo storage")
+    else:
+        logging.warning("⚠️ CLOUDINARY_URL not set. Photos will not be stored.")
+except Exception as e:
+    logging.error(f"Cloudinary setup error: {e}")
+
+# ============================================================
+# IN-MEMORY CACHE (for fast reads, backed by Google Sheets)
+# ============================================================
+readings_cache = []  # Cache of recent readings
+cache_loaded = False
+
+async def load_cache_from_sheets():
+    """Load recent readings from Google Sheets into memory cache"""
+    global readings_cache, cache_loaded
+    
+    if not config_ready or not readings_sheet:
+        cache_loaded = True
+        return
+    
+    try:
+        all_data = readings_sheet.get_all_records()
+        readings_cache = all_data[-2000:] if len(all_data) > 2000 else all_data  # Keep last 2000
+        cache_loaded = True
+        logging.info(f"✅ Loaded {len(readings_cache)} readings into cache")
+    except Exception as e:
+        logging.error(f"Cache load error: {e}")
+        cache_loaded = True  # Don't block startup
+
+# ============================================================
+# APP SETUP
+# ============================================================
+app = FastAPI(title="Neutral Glass Condition Monitoring")
 api_router = APIRouter(prefix="/api")
 
 # Models
-class Document(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    filename: str
-    doc_type: str  # Manual, SOP, Drawing, History
-    content: str
-    metadata: Dict[str, Any] = {}
-    uploaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class ExpertQuery(BaseModel):
-    query: str
-    machine: Optional[str] = None
-    line: Optional[str] = None
-    severity: Optional[str] = None
-
-class RagResponse(BaseModel):
-    issue_summary: str
-    key_observations: List[str]
-    retrieved_knowledge: List[Dict[str, str]]
-    root_cause_analysis: List[Dict[str, str]]
-    recommended_actions: Dict[str, List[str]]
-    drawing_reference: Dict[str, str]
-    condition_monitoring: Dict[str, Any]
-    confidence_level: str
-    final_recommendation: str
-
-class ConditionMonitoringData(BaseModel):
-    plant: str  # A, G, K, E
-    machine: str  # A1, A2, G1, K1, etc.
-    motor: str  # Component name (e.g., TubeRotation, Sec1 Invert)
-    current: float  # Measured current in Amps
-    normal_current: float  # Normal threshold
-    warning_current: float  # Warning threshold
-    timestamp: datetime
-    status: str  # OK, Warning, Alarm
-
 class ConditionMonitoringCreate(BaseModel):
     plant: str
     machine: str
@@ -126,224 +159,184 @@ class ConditionMonitoringCreate(BaseModel):
     current: float
     normal_current: float
     warning_current: float
-    entry_source: str = "Office"  # Field or Office
+    entry_source: str = "Office"
     verified_by: Optional[str] = None
     notes: Optional[str] = None
-    photo_base64: Optional[str] = None  # Base64 encoded photo
+    photo_base64: Optional[str] = None
 
-# Helper Functions
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
 def add_timestamp_watermark(photo_base64: str) -> str:
     """Add timestamp watermark to photo"""
     try:
-        # Decode base64 image
-        image_data = base64.b64decode(photo_base64.split(',')[1] if ',' in photo_base64 else photo_base64)
+        image_data = base64.b64decode(
+            photo_base64.split(',')[1] if ',' in photo_base64 else photo_base64
+        )
         image = Image.open(BytesIO(image_data))
         
-        # Convert to RGB if necessary
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # Create drawing context
+        # Resize to reduce size (max 800px wide)
+        max_width = 800
+        if image.width > max_width:
+            ratio = max_width / image.width
+            image = image.resize((max_width, int(image.height * ratio)), Image.LANCZOS)
+        
         draw = ImageDraw.Draw(image)
-        
-        # Timestamp text
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        
-        # Calculate position (bottom-right corner)
         width, height = image.size
         
-        # Use default font (try to use a better font if available)
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
         except:
             font = ImageFont.load_default()
         
-        # Get text size
+        # Timestamp text
         bbox = draw.textbbox((0, 0), timestamp, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
+        x = width - text_width - 15
+        y = height - text_height - 15
+        padding = 8
         
-        # Position: bottom-right with padding
-        x = width - text_width - 20
-        y = height - text_height - 20
-        
-        # Draw semi-transparent background
-        padding = 10
         draw.rectangle(
             [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
-            fill=(0, 0, 0, 180)
+            fill=(0, 0, 0)
         )
-        
-        # Draw text
         draw.text((x, y), timestamp, fill=(255, 255, 255), font=font)
         
-        # Add "VERIFIED" text
+        # VERIFIED badge
         verified_text = "VERIFIED"
-        bbox_verified = draw.textbbox((0, 0), verified_text, font=font)
-        verified_width = bbox_verified[2] - bbox_verified[0]
-        
-        x_verified = width - verified_width - 20
-        y_verified = y - text_height - 20
+        bbox_v = draw.textbbox((0, 0), verified_text, font=font)
+        vw = bbox_v[2] - bbox_v[0]
+        xv = width - vw - 15
+        yv = y - text_height - 20
         
         draw.rectangle(
-            [x_verified - padding, y_verified - padding, x_verified + verified_width + padding, y_verified + text_height + padding],
-            fill=(0, 47, 167, 200)  # Neutral Glass blue
+            [xv - padding, yv - padding, xv + vw + padding, yv + text_height + padding],
+            fill=(0, 47, 167)
         )
-        draw.text((x_verified, y_verified), verified_text, fill=(255, 255, 255), font=font)
+        draw.text((xv, yv), verified_text, fill=(255, 255, 255), font=font)
         
         # Convert back to base64
         buffered = BytesIO()
-        image.save(buffered, format="JPEG", quality=85)
+        image.save(buffered, format="JPEG", quality=75)
         img_str = base64.b64encode(buffered.getvalue()).decode()
         
         return f"data:image/jpeg;base64,{img_str}"
     
     except Exception as e:
         logging.error(f"Watermark error: {e}")
-        return photo_base64  # Return original if watermark fails
+        return photo_base64
 
-def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from PDF"""
-    try:
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-        return text
-    except Exception as e:
-        logging.error(f"PDF extraction error: {e}")
+def upload_photo_to_cloudinary(photo_base64: str, plant: str, machine: str) -> str:
+    """Upload photo to Cloudinary and return URL"""
+    if not CLOUDINARY_ENABLED:
         return ""
-
-def extract_text_from_image(file_bytes: bytes) -> str:
-    """Extract text from image using OCR"""
-    try:
-        image = Image.open(io.BytesIO(file_bytes))
-        text = pytesseract.image_to_string(image)
-        return text
-    except Exception as e:
-        logging.error(f"Image OCR error: {e}")
-        return ""
-
-def extract_text_from_excel(file_bytes: bytes) -> str:
-    """Extract text from Excel"""
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
-        text = ""
-        for sheet in wb.worksheets:
-            for row in sheet.iter_rows(values_only=True):
-                text += " ".join([str(cell) for cell in row if cell]) + "\n"
-        return text
-    except Exception as e:
-        logging.error(f"Excel extraction error: {e}")
-        return ""
-
-async def sync_to_google_sheets(readings_data):
-    """Sync readings to Google Sheets"""
-    if not GOOGLE_SHEETS_ENABLED or not sheets_service or not GOOGLE_SHEET_ID:
-        return False
     
     try:
-        sheet = sheets_service.open_by_key(GOOGLE_SHEET_ID).sheet1
+        import cloudinary.uploader
         
-        # Prepare rows
-        rows = []
-        for reading in readings_data:
-            row = [
-                reading.get('timestamp', ''),
-                reading.get('plant', ''),
-                reading.get('machine', ''),
-                reading.get('motor', ''),
-                reading.get('current', ''),
-                reading.get('temperature', ''),
-                reading.get('i2t', ''),
-                reading.get('normal_current', ''),
-                reading.get('warning_current', ''),
-                reading.get('normal_temperature', ''),
-                reading.get('warning_temperature', ''),
-                reading.get('normal_i2t', ''),
-                reading.get('warning_i2t', ''),
-                reading.get('status', ''),
-                reading.get('verified_by', ''),
-                reading.get('entry_source', ''),
-                'Yes' if reading.get('has_photo') else 'No'
-            ]
-            rows.append(row)
-        
-        # Append rows
-        sheet.append_rows(rows)
-        logging.info(f"✅ Synced {len(rows)} readings to Google Sheets")
-        return True
-    
-    except Exception as e:
-        logging.error(f"Google Sheets sync error: {e}")
-        return False
-
-async def generate_rag_response(query: str, context_docs: List[Dict], machine: str = None) -> RagResponse:
-    """Generate structured RAG response using LLM"""
-    
-    # Prepare context
-    context = "\n\n".join([
-        f"Source: {doc['source']}\nDocument: {doc['document']}\nContent: {doc['content']}"
-        for doc in context_docs
-    ])
-    
-    system_prompt = """You are a Senior Instrumentation & Process Control Expert with 20+ years of experience.
-Your role is to provide expert troubleshooting guidance for industrial plants.
-Always structure your response as a valid JSON object with the following fields:
-- issue_summary (string)
-- key_observations (array of strings)
-- retrieved_knowledge (array of objects with source, document, section, key_extract)
-- root_cause_analysis (array of objects with cause and justification)
-- recommended_actions (object with immediate, detailed_troubleshooting, preventive arrays)
-- drawing_reference (object with drawing_type and what_to_verify)
-- condition_monitoring (object with parameters_to_verify, trend_to_observe, sheet_update_required)
-- confidence_level (string: High/Medium/Low)
-- final_recommendation (string)
-
-Be technical, precise, and practical. Prioritize plant safety."""
-    
-    user_prompt = f"""Query: {query}
-Machine/Line: {machine or 'Not specified'}
-
-Relevant Knowledge Base:
-{context}
-
-Provide a comprehensive troubleshooting analysis in JSON format."""
-    
-    try:
-        chat = LlmChat(
-            api_key=EMERGENT_KEY,
-            session_id=f"expert_{uuid.uuid4()}",
-            system_message=system_prompt
-        ).with_model("openai", "gpt-4o")
-        
-        message = UserMessage(text=user_prompt)
-        response = await chat.send_message(message)
-        
-        # Parse JSON response
-        response_json = json.loads(response)
-        return RagResponse(**response_json)
-    
-    except Exception as e:
-        logging.error(f"LLM generation error: {e}")
-        # Return fallback response
-        return RagResponse(
-            issue_summary=f"Issue: {query}",
-            key_observations=["Unable to generate detailed analysis"],
-            retrieved_knowledge=context_docs[:3],
-            root_cause_analysis=[{"cause": "Analysis in progress", "justification": "Please retry"}],
-            recommended_actions={
-                "immediate": ["Contact maintenance team"],
-                "detailed_troubleshooting": ["Review relevant manuals"],
-                "preventive": ["Schedule preventive maintenance"]
-            },
-            drawing_reference={"drawing_type": "P&ID", "what_to_verify": "Check instrument loops"},
-            condition_monitoring={"parameters_to_verify": ["Temperature", "Pressure"], "trend_to_observe": "Check recent trends", "sheet_update_required": True},
-            confidence_level="Low",
-            final_recommendation="Requires further investigation with complete data"
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            photo_base64,
+            folder=f"condition-monitoring/{plant}/{machine}",
+            resource_type="image",
+            quality="auto:low",
+            format="jpg"
         )
+        return result.get('secure_url', '')
+    except Exception as e:
+        logging.error(f"Cloudinary upload error: {e}")
+        return ""
 
-# API Routes
+def save_reading_to_sheets(reading_data: dict):
+    """Save a single reading to Google Sheets"""
+    if not config_ready or not readings_sheet:
+        return False
+    
+    try:
+        row = [
+            reading_data.get('id', ''),
+            reading_data.get('timestamp', ''),
+            reading_data.get('plant', ''),
+            reading_data.get('machine', ''),
+            reading_data.get('motor', ''),
+            str(reading_data.get('current', '')),
+            str(reading_data.get('temperature', '')),
+            str(reading_data.get('i2t', '')),
+            str(reading_data.get('normal_current', '')),
+            str(reading_data.get('warning_current', '')),
+            str(reading_data.get('normal_temperature', '')),
+            str(reading_data.get('warning_temperature', '')),
+            str(reading_data.get('normal_i2t', '')),
+            str(reading_data.get('warning_i2t', '')),
+            reading_data.get('status', ''),
+            reading_data.get('verified_by', ''),
+            reading_data.get('entry_source', ''),
+            'Yes' if reading_data.get('has_photo') else 'No',
+            reading_data.get('photo_url', ''),
+            'Yes' if reading_data.get('bulk_entry') else 'No'
+        ]
+        readings_sheet.append_row(row, value_input_option='USER_ENTERED')
+        return True
+    except Exception as e:
+        logging.error(f"Sheets write error: {e}")
+        return False
+
+def save_bulk_readings_to_sheets(readings_list: list):
+    """Save multiple readings to Google Sheets at once (batch)"""
+    if not config_ready or not readings_sheet:
+        return False
+    
+    try:
+        rows = []
+        for r in readings_list:
+            rows.append([
+                r.get('id', ''),
+                r.get('timestamp', ''),
+                r.get('plant', ''),
+                r.get('machine', ''),
+                r.get('motor', ''),
+                str(r.get('current', '')),
+                str(r.get('temperature', '')),
+                str(r.get('i2t', '')),
+                str(r.get('normal_current', '')),
+                str(r.get('warning_current', '')),
+                str(r.get('normal_temperature', '')),
+                str(r.get('warning_temperature', '')),
+                str(r.get('normal_i2t', '')),
+                str(r.get('warning_i2t', '')),
+                r.get('status', ''),
+                r.get('verified_by', ''),
+                r.get('entry_source', ''),
+                'Yes' if r.get('has_photo') else 'No',
+                r.get('photo_url', ''),
+                'Yes' if r.get('bulk_entry') else 'No'
+            ])
+        
+        readings_sheet.append_rows(rows, value_input_option='USER_ENTERED')
+        logging.info(f"✅ Saved {len(rows)} readings to Google Sheets")
+        return True
+    except Exception as e:
+        logging.error(f"Sheets bulk write error: {e}")
+        return False
+
+# ============================================================
+# API ROUTES
+# ============================================================
+
+@api_router.get("/")
+async def root():
+    return {"message": "Neutral Glass Condition Monitoring API", "status": "running"}
+
+@api_router.get("/healthz")
+async def health_check():
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 @api_router.get("/machine-config/{plant}/{machine}")
 async def get_machine_config(plant: str, machine: str):
     """Get motor configuration for a specific machine"""
@@ -352,8 +345,8 @@ async def get_machine_config(plant: str, machine: str):
             return MACHINE_CONFIG["plants"][plant]["machines"][machine]
         else:
             raise HTTPException(status_code=404, detail="Machine configuration not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Machine configuration not found")
 
 @api_router.post("/condition-monitoring/bulk")
 async def add_bulk_condition_data(data: dict):
@@ -367,23 +360,24 @@ async def add_bulk_condition_data(data: dict):
         entry_source = data.get("entry_source", "Field")
         
         timestamp = datetime.now(timezone.utc)
+        timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Process photo if provided
-        photo_with_timestamp = None
+        # Process photo
+        photo_url = ""
         has_photo = False
         if photo_base64:
-            photo_with_timestamp = add_timestamp_watermark(photo_base64)
+            watermarked = add_timestamp_watermark(photo_base64)
+            photo_url = upload_photo_to_cloudinary(watermarked, plant, machine)
             has_photo = True
         
         # Process each reading
         inserted_count = 0
         alarm_count = 0
         warning_count = 0
+        docs_for_sheets = []
         
         for reading in readings_list:
             motor = reading.get("motor")
-            
-            # Determine status for each parameter
             status = "OK"
             
             # Check current
@@ -391,7 +385,6 @@ async def add_bulk_condition_data(data: dict):
                 current = float(reading.get("current"))
                 normal_current = float(reading.get("normal_current", 0))
                 warning_current = float(reading.get("warning_current", 0))
-                
                 if current >= warning_current:
                     status = "Alarm"
                     alarm_count += 1
@@ -404,7 +397,6 @@ async def add_bulk_condition_data(data: dict):
                 temp = float(reading.get("temperature"))
                 normal_temp = float(reading.get("normal_temperature", 0))
                 warning_temp = float(reading.get("warning_temperature", 0))
-                
                 if temp >= warning_temp:
                     status = "Alarm"
                     alarm_count += 1
@@ -414,77 +406,45 @@ async def add_bulk_condition_data(data: dict):
             
             # Check I2t
             if reading.get("i2t"):
-                i2t = float(reading.get("i2t"))
+                i2t_val = float(reading.get("i2t"))
                 normal_i2t = float(reading.get("normal_i2t", 0))
                 warning_i2t = float(reading.get("warning_i2t", 0))
-                
-                if i2t >= warning_i2t:
+                if i2t_val >= warning_i2t:
                     status = "Alarm"
                     alarm_count += 1
-                elif i2t >= normal_i2t and status == "OK":
+                elif i2t_val >= normal_i2t and status == "OK":
                     status = "Warning"
                     warning_count += 1
             
             doc = {
+                "id": str(uuid.uuid4())[:8],
+                "timestamp": timestamp_str,
                 "plant": plant,
                 "machine": machine,
                 "motor": motor,
-                "current": float(reading.get("current")) if reading.get("current") else None,
-                "normal_current": float(reading.get("normal_current")) if reading.get("normal_current") else None,
-                "warning_current": float(reading.get("warning_current")) if reading.get("warning_current") else None,
-                "temperature": float(reading.get("temperature")) if reading.get("temperature") else None,
-                "normal_temperature": float(reading.get("normal_temperature")) if reading.get("normal_temperature") else None,
-                "warning_temperature": float(reading.get("warning_temperature")) if reading.get("warning_temperature") else None,
-                "i2t": float(reading.get("i2t")) if reading.get("i2t") else None,
-                "normal_i2t": float(reading.get("normal_i2t")) if reading.get("normal_i2t") else None,
-                "warning_i2t": float(reading.get("warning_i2t")) if reading.get("warning_i2t") else None,
+                "current": float(reading.get("current")) if reading.get("current") else "",
+                "temperature": float(reading.get("temperature")) if reading.get("temperature") else "",
+                "i2t": float(reading.get("i2t")) if reading.get("i2t") else "",
+                "normal_current": float(reading.get("normal_current")) if reading.get("normal_current") else "",
+                "warning_current": float(reading.get("warning_current")) if reading.get("warning_current") else "",
+                "normal_temperature": float(reading.get("normal_temperature")) if reading.get("normal_temperature") else "",
+                "warning_temperature": float(reading.get("warning_temperature")) if reading.get("warning_temperature") else "",
+                "normal_i2t": float(reading.get("normal_i2t")) if reading.get("normal_i2t") else "",
+                "warning_i2t": float(reading.get("warning_i2t")) if reading.get("warning_i2t") else "",
                 "status": status,
-                "timestamp": timestamp.isoformat(),
-                "entry_timestamp": timestamp.isoformat(),
+                "verified_by": technician or "",
                 "entry_source": entry_source,
-                "verified_by": technician,
-                "notes": None,
-                "bulk_entry_flag": False,
                 "has_photo": has_photo,
-                "photo": photo_with_timestamp,
-                "verified": entry_source == "Field" or has_photo
+                "photo_url": photo_url,
+                "bulk_entry": True
             }
             
-            await db.condition_monitoring.insert_one(doc)
+            docs_for_sheets.append(doc)
+            readings_cache.append(doc)  # Add to in-memory cache
             inserted_count += 1
         
-        # Sync to Google Sheets if enabled
-        sheets_synced = False
-        if GOOGLE_SHEETS_ENABLED:
-            # Prepare data for sheets
-            sheets_data = []
-            for reading in readings_list:
-                motor = reading.get("motor")
-                # Find the corresponding doc we just inserted
-                for r in readings_list:
-                    if r.get("motor") == motor:
-                        sheets_data.append({
-                            'timestamp': timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                            'plant': plant,
-                            'machine': machine,
-                            'motor': motor,
-                            'current': reading.get('current', ''),
-                            'temperature': reading.get('temperature', ''),
-                            'i2t': reading.get('i2t', ''),
-                            'normal_current': reading.get('normal_current', ''),
-                            'warning_current': reading.get('warning_current', ''),
-                            'normal_temperature': reading.get('normal_temperature', ''),
-                            'warning_temperature': reading.get('warning_temperature', ''),
-                            'normal_i2t': reading.get('normal_i2t', ''),
-                            'warning_i2t': reading.get('warning_i2t', ''),
-                            'status': 'Alarm' if reading.get('current', 0) >= reading.get('warning_current', 999) or reading.get('temperature', 0) >= reading.get('warning_temperature', 999) or reading.get('i2t', 0) >= reading.get('warning_i2t', 999) else ('Warning' if reading.get('current', 0) >= reading.get('normal_current', 999) or reading.get('temperature', 0) >= reading.get('normal_temperature', 999) or reading.get('i2t', 0) >= reading.get('normal_i2t', 999) else 'OK'),
-                            'verified_by': technician,
-                            'entry_source': entry_source,
-                            'has_photo': has_photo
-                        })
-                        break
-            
-            sheets_synced = await sync_to_google_sheets(sheets_data)
+        # Batch write to Google Sheets
+        sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
         
         return {
             "message": "Bulk readings submitted successfully",
@@ -498,346 +458,257 @@ async def add_bulk_condition_data(data: dict):
         logging.error(f"Bulk entry error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/")
-async def root():
-    return {"message": "Process Control Expert System API"}
-
-@api_router.post("/documents/upload")
-async def upload_document(
-    file: UploadFile = File(...),
-    doc_type: str = Form(...),
-    machine: str = Form(None),
-    section: str = Form(None)
-):
-    """Upload and process document"""
-    try:
-        file_bytes = await file.read()
-        
-        # Extract text based on file type
-        if file.filename.endswith('.pdf'):
-            text = extract_text_from_pdf(file_bytes)
-        elif file.filename.endswith(('.png', '.jpg', '.jpeg')):
-            text = extract_text_from_image(file_bytes)
-        elif file.filename.endswith(('.xlsx', '.xls')):
-            text = extract_text_from_excel(file_bytes)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type")
-        
-        if not text.strip():
-            raise HTTPException(status_code=400, detail="No text extracted from document")
-        
-        # Create document
-        doc_id = str(uuid.uuid4())
-        doc = Document(
-            id=doc_id,
-            filename=file.filename,
-            doc_type=doc_type,
-            content=text[:5000],  # Store preview
-            metadata={
-                "machine": machine,
-                "section": section,
-                "file_size": len(file_bytes)
-            }
-        )
-        
-        # Store in MongoDB
-        doc_dict = doc.model_dump()
-        doc_dict['uploaded_at'] = doc_dict['uploaded_at'].isoformat()
-        await db.documents.insert_one(doc_dict)
-        
-        # Add to vector store
-        # Split text into chunks for better retrieval
-        chunk_size = 1000
-        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-        
-        for idx, chunk in enumerate(chunks[:10]):  # Limit to 10 chunks per doc
-            chunk_id = f"{doc_id}_{idx}"
-            collection.add(
-                ids=[chunk_id],
-                documents=[chunk],
-                metadatas=[{
-                    "doc_id": doc_id,
-                    "filename": file.filename,
-                    "doc_type": doc_type,
-                    "machine": machine or "general",
-                    "section": section or "general",
-                    "chunk_index": idx
-                }]
-            )
-        
-        return {"message": "Document uploaded successfully", "doc_id": doc_id, "chunks": len(chunks[:10])}
-    
-    except Exception as e:
-        logging.error(f"Upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/documents")
-async def get_documents():
-    """Get all documents"""
-    docs = await db.documents.find({}, {"_id": 0}).to_list(1000)
-    for doc in docs:
-        if isinstance(doc.get('uploaded_at'), str):
-            doc['uploaded_at'] = datetime.fromisoformat(doc['uploaded_at'])
-    return docs
-
-@api_router.delete("/documents/{doc_id}")
-async def delete_document(doc_id: str):
-    """Delete document"""
-    # Delete from MongoDB
-    await db.documents.delete_one({"id": doc_id})
-    
-    # Delete from vector store
-    try:
-        # Get all chunk IDs for this document
-        results = collection.get(where={"doc_id": doc_id})
-        if results['ids']:
-            collection.delete(ids=results['ids'])
-    except Exception as e:
-        logging.error(f"Vector delete error: {e}")
-    
-    return {"message": "Document deleted successfully"}
-
-@api_router.post("/query", response_model=RagResponse)
-async def expert_query(query: ExpertQuery):
-    """Process expert query with RAG"""
-    try:
-        # Retrieve relevant documents from vector store
-        results = collection.query(
-            query_texts=[query.query],
-            n_results=5,
-            where={"machine": query.machine} if query.machine else None
-        )
-        
-        # Format retrieved knowledge
-        context_docs = []
-        if results['documents'] and results['documents'][0]:
-            for idx, doc in enumerate(results['documents'][0]):
-                metadata = results['metadatas'][0][idx]
-                context_docs.append({
-                    "source": metadata.get('doc_type', 'Unknown'),
-                    "document": metadata.get('filename', 'Unknown'),
-                    "section": metadata.get('section', 'N/A'),
-                    "content": doc[:500]
-                })
-        
-        # Generate RAG response
-        response = await generate_rag_response(query.query, context_docs, query.machine)
-        
-        # Store query history
-        query_record = {
-            "id": str(uuid.uuid4()),
-            "query": query.query,
-            "machine": query.machine,
-            "line": query.line,
-            "severity": query.severity,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "confidence": response.confidence_level
-        }
-        await db.query_history.insert_one(query_record)
-        
-        return response
-    
-    except Exception as e:
-        logging.error(f"Query error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/query/history")
-async def get_query_history():
-    """Get query history"""
-    history = await db.query_history.find({}, {"_id": 0}).sort("timestamp", -1).to_list(50)
-    return history
-
 @api_router.post("/condition-monitoring")
 async def add_condition_data(data: ConditionMonitoringCreate):
-    """Add condition monitoring data"""
-    # Calculate status based on thresholds
+    """Add single condition monitoring data"""
     status = "OK"
     if data.current >= data.warning_current:
         status = "Alarm"
     elif data.current >= data.normal_current:
         status = "Warning"
     
-    reading_timestamp = datetime.now(timezone.utc)
-    entry_timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(timezone.utc)
     
-    # Check for suspicious bulk entry (multiple readings within 1 minute)
-    recent_entries = await db.condition_monitoring.count_documents({
-        "plant": data.plant,
-        "entry_timestamp": {
-            "$gte": (entry_timestamp - timedelta(minutes=1)).isoformat()
-        }
-    })
-    
-    bulk_entry_flag = recent_entries > 5  # Flag if more than 5 entries in 1 minute
-    
-    # Process photo if provided
-    photo_with_timestamp = None
+    photo_url = ""
     has_photo = False
     if data.photo_base64:
-        photo_with_timestamp = add_timestamp_watermark(data.photo_base64)
+        watermarked = add_timestamp_watermark(data.photo_base64)
+        photo_url = upload_photo_to_cloudinary(watermarked, data.plant, data.machine)
         has_photo = True
     
     doc = {
+        "id": str(uuid.uuid4())[:8],
+        "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "plant": data.plant,
         "machine": data.machine,
         "motor": data.motor,
         "current": data.current,
+        "temperature": "",
+        "i2t": "",
         "normal_current": data.normal_current,
         "warning_current": data.warning_current,
+        "normal_temperature": "",
+        "warning_temperature": "",
+        "normal_i2t": "",
+        "warning_i2t": "",
         "status": status,
-        "timestamp": reading_timestamp.isoformat(),
-        "entry_timestamp": entry_timestamp.isoformat(),
+        "verified_by": data.verified_by or "",
         "entry_source": data.entry_source,
-        "verified_by": data.verified_by,
-        "notes": data.notes,
-        "bulk_entry_flag": bulk_entry_flag,
         "has_photo": has_photo,
-        "photo": photo_with_timestamp,
-        "verified": data.entry_source == "Field" or has_photo  # Photo = auto-verified
+        "photo_url": photo_url,
+        "bulk_entry": False
     }
-    await db.condition_monitoring.insert_one(doc)
+    
+    # Save to sheets and cache
+    save_reading_to_sheets(doc)
+    readings_cache.append(doc)
+    
     return {
-        "message": "Data added successfully", 
+        "message": "Data added successfully",
         "status": status,
-        "bulk_entry_flag": bulk_entry_flag,
         "has_photo": has_photo
     }
 
 @api_router.get("/condition-monitoring/plant/{plant}")
 async def get_plant_data(plant: str, limit: int = 1000):
     """Get condition monitoring data for a plant"""
-    data = await db.condition_monitoring.find(
-        {"plant": plant},
-        {"_id": 0}
-    ).sort("timestamp", -1).to_list(limit)
-    return data
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    
+    data = [r for r in readings_cache if r.get("Plant", r.get("plant", "")) == plant]
+    data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
+    return data[:limit]
 
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
 async def get_machine_data(plant: str, machine: str, limit: int = 100):
     """Get condition monitoring data for a specific machine"""
-    data = await db.condition_monitoring.find(
-        {"plant": plant, "machine": machine},
-        {"_id": 0}
-    ).sort("timestamp", -1).to_list(limit)
-    return data
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    
+    data = [
+        r for r in readings_cache
+        if (r.get("Plant", r.get("plant", "")) == plant and
+            r.get("Machine", r.get("machine", "")) == machine)
+    ]
+    data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
+    return data[:limit]
 
 @api_router.get("/active-alarms")
 async def get_active_alarms():
-    """Get all active alarms"""
-    pipeline = [
-        {"$sort": {"timestamp": -1}},
-        {"$group": {
-            "_id": {"plant": "$plant", "machine": "$machine", "motor": "$motor"},
-            "latest": {"$first": "$$ROOT"}
-        }},
-        {"$replaceRoot": {"newRoot": "$latest"}},
-        {"$match": {"status": "Alarm"}},
-        {"$project": {"_id": 0}}
-    ]
-    alarms = await db.condition_monitoring.aggregate(pipeline).to_list(100)
+    """Get all active alarms (latest reading per motor)"""
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    
+    # Group by plant+machine+motor, get latest
+    latest = {}
+    for r in readings_cache:
+        key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
+        ts = r.get("Timestamp", r.get("timestamp", ""))
+        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
+            latest[key] = r
+    
+    # Filter alarms
+    alarms = []
+    for r in latest.values():
+        status = r.get("Status", r.get("status", ""))
+        if status == "Alarm":
+            alarms.append({
+                "plant": r.get("Plant", r.get("plant", "")),
+                "machine": r.get("Machine", r.get("machine", "")),
+                "motor": r.get("Motor", r.get("motor", "")),
+                "current": r.get("Current", r.get("current", "")),
+                "temperature": r.get("Temperature", r.get("temperature", "")),
+                "i2t": r.get("I2t", r.get("i2t", "")),
+                "warning_current": r.get("Warning_Current", r.get("warning_current", "")),
+                "status": "Alarm",
+                "timestamp": r.get("Timestamp", r.get("timestamp", "")),
+                "verified_by": r.get("Verified_By", r.get("verified_by", "")),
+            })
+    
     return alarms
 
 @api_router.get("/machine-health/{plant}")
 async def get_machine_health(plant: str):
     """Get health status for all machines in a plant"""
-    pipeline = [
-        {"$match": {"plant": plant}},
-        {"$sort": {"timestamp": -1}},
-        {"$group": {
-            "_id": {"plant": "$plant", "machine": "$machine", "motor": "$motor"},
-            "latest": {"$first": "$$ROOT"}
-        }},
-        {"$replaceRoot": {"newRoot": "$latest"}},
-        {"$group": {
-            "_id": "$machine",
-            "ok_count": {"$sum": {"$cond": [{"$eq": ["$status", "OK"]}, 1, 0]}},
-            "warning_count": {"$sum": {"$cond": [{"$eq": ["$status", "Warning"]}, 1, 0]}},
-            "alarm_count": {"$sum": {"$cond": [{"$eq": ["$status", "Alarm"]}, 1, 0]}},
-            "total": {"$sum": 1}
-        }},
-        {"$project": {
-            "_id": 0,
-            "machine": "$_id",
-            "ok": "$ok_count",
-            "warning": "$warning_count",
-            "alarm": "$alarm_count",
-            "total": "$total",
-            "health_percent": {
-                "$round": [
-                    {"$multiply": [
-                        {"$divide": ["$ok_count", "$total"]},
-                        100
-                    ]},
-                    0
-                ]
-            }
-        }},
-        {"$sort": {"machine": 1}}
-    ]
-    health_data = await db.condition_monitoring.aggregate(pipeline).to_list(100)
-    return health_data
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    
+    # Get latest reading per motor
+    latest = {}
+    for r in readings_cache:
+        rp = r.get("Plant", r.get("plant", ""))
+        if rp != plant:
+            continue
+        key = f"{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
+        ts = r.get("Timestamp", r.get("timestamp", ""))
+        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
+            latest[key] = r
+    
+    # Group by machine
+    machines = {}
+    for r in latest.values():
+        m = r.get("Machine", r.get("machine", ""))
+        if m not in machines:
+            machines[m] = {"ok": 0, "warning": 0, "alarm": 0, "total": 0}
+        status = r.get("Status", r.get("status", "OK"))
+        machines[m]["total"] += 1
+        if status == "Alarm":
+            machines[m]["alarm"] += 1
+        elif status == "Warning":
+            machines[m]["warning"] += 1
+        else:
+            machines[m]["ok"] += 1
+    
+    result = []
+    for machine, counts in sorted(machines.items()):
+        total = counts["total"]
+        health = round((counts["ok"] / total) * 100) if total > 0 else 100
+        result.append({
+            "machine": machine,
+            "ok": counts["ok"],
+            "warning": counts["warning"],
+            "alarm": counts["alarm"],
+            "total": total,
+            "health_percent": health
+        })
+    
+    return result
 
 @api_router.get("/plant-health")
 async def get_plant_health():
     """Get overall health for all plants"""
-    pipeline = [
-        {"$sort": {"timestamp": -1}},
-        {"$group": {
-            "_id": {"plant": "$plant", "machine": "$machine", "motor": "$motor"},
-            "latest": {"$first": "$$ROOT"}
-        }},
-        {"$replaceRoot": {"newRoot": "$latest"}},
-        {"$group": {
-            "_id": "$plant",
-            "ok_count": {"$sum": {"$cond": [{"$eq": ["$status", "OK"]}, 1, 0]}},
-            "warning_count": {"$sum": {"$cond": [{"$eq": ["$status", "Warning"]}, 1, 0]}},
-            "alarm_count": {"$sum": {"$cond": [{"$eq": ["$status", "Alarm"]}, 1, 0]}},
-            "total": {"$sum": 1}
-        }},
-        {"$project": {
-            "_id": 0,
-            "plant": "$_id",
-            "ok": "$ok_count",
-            "warning": "$warning_count",
-            "alarm": "$alarm_count",
-            "total": "$total",
-            "health_percent": {
-                "$round": [
-                    {"$multiply": [
-                        {"$divide": ["$ok_count", "$total"]},
-                        100
-                    ]},
-                    0
-                ]
-            }
-        }},
-        {"$sort": {"plant": 1}}
-    ]
-    health_data = await db.condition_monitoring.aggregate(pipeline).to_list(100)
-    return health_data
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    
+    # Get latest reading per motor across all plants
+    latest = {}
+    for r in readings_cache:
+        key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
+        ts = r.get("Timestamp", r.get("timestamp", ""))
+        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
+            latest[key] = r
+    
+    # Group by plant
+    plants = {}
+    for r in latest.values():
+        p = r.get("Plant", r.get("plant", ""))
+        if p not in plants:
+            plants[p] = {"ok": 0, "warning": 0, "alarm": 0, "total": 0}
+        status = r.get("Status", r.get("status", "OK"))
+        plants[p]["total"] += 1
+        if status == "Alarm":
+            plants[p]["alarm"] += 1
+        elif status == "Warning":
+            plants[p]["warning"] += 1
+        else:
+            plants[p]["ok"] += 1
+    
+    result = []
+    for plant, counts in sorted(plants.items()):
+        total = counts["total"]
+        health = round((counts["ok"] / total) * 100) if total > 0 else 100
+        result.append({
+            "plant": plant,
+            "ok": counts["ok"],
+            "warning": counts["warning"],
+            "alarm": counts["alarm"],
+            "total": total,
+            "health_percent": health
+        })
+    
+    return result
 
 @api_router.get("/stats")
 async def get_stats():
     """Get system stats"""
-    doc_count = await db.documents.count_documents({})
-    query_count = await db.query_history.count_documents({})
-    
-    # Get document type breakdown
-    pipeline = [
-        {"$group": {"_id": "$doc_type", "count": {"$sum": 1}}}
-    ]
-    doc_types = await db.documents.aggregate(pipeline).to_list(100)
+    if not cache_loaded:
+        await load_cache_from_sheets()
     
     return {
-        "total_documents": doc_count,
-        "total_queries": query_count,
-        "document_types": {item['_id']: item['count'] for item in doc_types},
-        "vector_store_size": collection.count()
+        "total_readings": len(readings_cache),
+        "google_sheets_connected": config_ready,
+        "cloudinary_connected": CLOUDINARY_ENABLED,
+        "cache_loaded": cache_loaded
     }
 
-# Include the router in the main app
+# ============================================================
+# SELF-PING (Keeps Render Free Tier Awake)
+# ============================================================
+
+async def self_ping():
+    """Ping self every 5 minutes to prevent Render free tier sleep"""
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
+    if not render_url:
+        logging.info("ℹ️ RENDER_EXTERNAL_URL not set, self-ping disabled")
+        return
+    
+    ping_url = f"{render_url}/api/healthz"
+    logging.info(f"🏓 Self-ping enabled: {ping_url}")
+    
+    while True:
+        await asyncio.sleep(300)  # 5 minutes
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(ping_url, timeout=10)
+                logging.debug(f"Self-ping: {resp.status_code}")
+        except Exception as e:
+            logging.debug(f"Self-ping error (non-critical): {e}")
+
+# ============================================================
+# APP LIFECYCLE
+# ============================================================
+
+@app.on_event("startup")
+async def startup():
+    """Load cache and start self-ping on startup"""
+    await load_cache_from_sheets()
+    asyncio.create_task(self_ping())
+    logging.info("🚀 Condition Monitoring System started")
+
+# Include router
 app.include_router(api_router)
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -846,13 +717,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
+# Logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
