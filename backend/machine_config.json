@@ -5,52 +5,563 @@
       "machines": {
         "A1": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", 
-            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Takeout",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Takeout",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         },
         "A2": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
-            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "TubeHeight": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         },
         "A3": {
-          "motors": ["Tube Rotation", "Feeder", "Main Conveyor", "Stacker"],
-          "parameters": ["current"]
+          "motors": [
+            "Tube Rotation",
+            "Feeder",
+            "Main Conveyor",
+            "Stacker"
+          ],
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 3,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         },
         "A4": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
-            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Invert", "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Invert", "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Invert",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Invert",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Invert",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Invert",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Invert",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Invert",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Invert",
+            "Sec7 Takeout",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Invert",
+            "Sec8 Takeout",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec7 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec8 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         }
       }
     },
@@ -59,59 +570,690 @@
       "machines": {
         "G1": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
-            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Takeout",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Takeout",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         },
         "G2": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2",
-            "Gob Distributor", "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Takeout", "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Takeout", "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Takeout",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Takeout",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Main Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec7 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec8 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         },
         "G3A": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", "Gob Distributor",
-            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Main Conveyor (Shared)", "Ware Transfer (Shared)", "Cross Conveyor (Shared)", "Stacker (Shared)"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Sec1 Invert",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Invert",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Invert",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Invert",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Invert",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Invert",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Main Conveyor (Shared)",
+            "Ware Transfer (Shared)",
+            "Cross Conveyor (Shared)",
+            "Stacker (Shared)"
           ],
-          "parameters": ["current"]
+          "parameters": [
+            "current"
+          ],
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Main Conveyor (Shared)": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Ware Transfer (Shared)": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Cross Conveyor (Shared)": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Stacker (Shared)": {
+              "normal_current": 3,
+              "warning_current": 4
+            }
+          }
         },
         "G3B": {
           "motors": [
-            "TubeRotation", "TubeHeight", "Feeder", "Shear1", "Shear2", "Gob Distributor",
-            "Sec1 Invert", "Sec1 Takeout", "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Invert", "Sec2 Takeout", "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Invert", "Sec3 Takeout", "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Invert", "Sec4 Takeout", "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Invert", "Sec5 Takeout", "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Invert", "Sec6 Takeout", "Sec6 Pusher Arm", "Sec6 Pusher Finger"
+            "TubeRotation",
+            "TubeHeight",
+            "Feeder",
+            "Shear1",
+            "Shear2",
+            "Gob Distributor",
+            "Sec1 Invert",
+            "Sec1 Takeout",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Invert",
+            "Sec2 Takeout",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Invert",
+            "Sec3 Takeout",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Invert",
+            "Sec4 Takeout",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Invert",
+            "Sec5 Takeout",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Invert",
+            "Sec6 Takeout",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger"
           ],
-          "parameters": ["current"],
-          "note": "Shares Main Conveyor, Ware Transfer, Cross Conveyor, Stacker with G3A"
+          "parameters": [
+            "current"
+          ],
+          "note": "Shares Main Conveyor, Ware Transfer, Cross Conveyor, Stacker with G3A",
+          "motor_limits": {
+            "TubeRotation": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "TubeHeight": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Feeder": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear1": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Shear2": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Gob Distributor": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec1 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec1 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec2 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec2 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec3 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec3 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec4 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec4 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec5 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec5 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Invert": {
+              "normal_current": 3,
+              "warning_current": 4
+            },
+            "Sec6 Takeout": {
+              "normal_current": 2.5,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Arm": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Sec6 Pusher Finger": {
+              "normal_current": 2,
+              "warning_current": 3
+            }
+          }
         }
       }
     },
@@ -120,47 +1262,463 @@
       "machines": {
         "K1": {
           "motors": [
-            "Feeder", "Tube Rotation", "Tube Height", "Shear", "Gob Distributor",
-            "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "Feeder",
+            "Tube Rotation",
+            "Tube Height",
+            "Shear",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["i2t", "temperature"]
+          "parameters": [
+            "i2t",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Feeder": {
+              "normal_i2t": 20,
+              "warning_i2t": 30,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Tube Rotation": {
+              "normal_i2t": 6,
+              "warning_i2t": 8,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Tube Height": {
+              "normal_i2t": 5,
+              "warning_i2t": 9,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Shear": {
+              "normal_i2t": 35,
+              "warning_i2t": 40,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Gob Distributor": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Main Conveyor": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Ware Transfer": {
+              "normal_i2t": 10,
+              "warning_i2t": 15,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Cross Conveyor": {
+              "normal_i2t": 10,
+              "warning_i2t": 15,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Sec1 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Sec1 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Sec2 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec2 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec3 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec3 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec4 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec4 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec5 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec5 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec6 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec6 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec7 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec7 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec8 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec8 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            }
+          }
         },
         "K2": {
           "motors": [
-            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
-            "Cross Conveyor", "Stacker"
+            "Tube Rotation",
+            "Feeder",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Stacker"
           ],
-          "parameters": ["current", "temperature"]
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         },
         "K3": {
           "motors": [
-            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
-            "Cross Conveyor", "Stacker"
+            "Tube Rotation",
+            "Feeder",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Stacker"
           ],
-          "parameters": ["current", "temperature"]
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 3,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         },
         "K4": {
           "motors": [
-            "Feeder", "Tube Rotation", "Tube Height", "Shear", "Gob Distributor",
-            "Main Conveyor", "Ware Transfer", "Cross Conveyor",
-            "Sec1 Pusher Arm", "Sec1 Pusher Finger",
-            "Sec2 Pusher Arm", "Sec2 Pusher Finger",
-            "Sec3 Pusher Arm", "Sec3 Pusher Finger",
-            "Sec4 Pusher Arm", "Sec4 Pusher Finger",
-            "Sec5 Pusher Arm", "Sec5 Pusher Finger",
-            "Sec6 Pusher Arm", "Sec6 Pusher Finger",
-            "Sec7 Pusher Arm", "Sec7 Pusher Finger",
-            "Sec8 Pusher Arm", "Sec8 Pusher Finger"
+            "Feeder",
+            "Tube Rotation",
+            "Tube Height",
+            "Shear",
+            "Gob Distributor",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Sec1 Pusher Arm",
+            "Sec1 Pusher Finger",
+            "Sec2 Pusher Arm",
+            "Sec2 Pusher Finger",
+            "Sec3 Pusher Arm",
+            "Sec3 Pusher Finger",
+            "Sec4 Pusher Arm",
+            "Sec4 Pusher Finger",
+            "Sec5 Pusher Arm",
+            "Sec5 Pusher Finger",
+            "Sec6 Pusher Arm",
+            "Sec6 Pusher Finger",
+            "Sec7 Pusher Arm",
+            "Sec7 Pusher Finger",
+            "Sec8 Pusher Arm",
+            "Sec8 Pusher Finger"
           ],
-          "parameters": ["i2t", "temperature"]
+          "parameters": [
+            "i2t",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Feeder": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Tube Rotation": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Tube Height": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Shear": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Gob Distributor": {
+              "normal_i2t": 75,
+              "warning_i2t": 90,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Main Conveyor": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Ware Transfer": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Cross Conveyor": {
+              "normal_i2t": 15,
+              "warning_i2t": 20,
+              "normal_temperature": 75,
+              "warning_temperature": 90
+            },
+            "Sec1 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec1 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec2 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec2 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec3 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec3 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec4 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec4 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec5 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec5 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec6 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec6 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec7 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec7 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec8 Pusher Arm": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            },
+            "Sec8 Pusher Finger": {
+              "normal_i2t": 8,
+              "warning_i2t": 10,
+              "normal_temperature": 70,
+              "warning_temperature": 90
+            }
+          }
         }
       }
     },
@@ -169,31 +1727,194 @@
       "machines": {
         "E1": {
           "motors": [
-            "Tube Rotation", "Feeder", "Drum", "Pusher",
-            "Main Conveyor", "Ware Transfer", "Cross Conveyor", "Stacker"
+            "Tube Rotation",
+            "Feeder",
+            "Drum",
+            "Pusher",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Stacker"
           ],
-          "parameters": ["current", "temperature"]
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 3,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Drum": {
+              "normal_current": 5,
+              "warning_current": 6,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Pusher": {
+              "normal_current": 5,
+              "warning_current": 6,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         },
         "E2": {
           "motors": [
-            "Tube Rotation", "Feeder", "Main Conveyor", "Ware Transfer",
-            "Cross Conveyor", "Stacker"
+            "Tube Rotation",
+            "Feeder",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Stacker"
           ],
-          "parameters": ["current", "temperature"]
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 3,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         },
         "E3": {
           "motors": [
-            "Tube Rotation", "Feeder", "Drum", "Pusher",
-            "Main Conveyor", "Ware Transfer", "Cross Conveyor", "Stacker"
+            "Tube Rotation",
+            "Feeder",
+            "Drum",
+            "Pusher",
+            "Main Conveyor",
+            "Ware Transfer",
+            "Cross Conveyor",
+            "Stacker"
           ],
-          "parameters": ["current", "temperature"]
+          "parameters": [
+            "current",
+            "temperature"
+          ],
+          "motor_limits": {
+            "Tube Rotation": {
+              "normal_current": 2,
+              "warning_current": 3,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Feeder": {
+              "normal_current": 5.5,
+              "warning_current": 6.5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Drum": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Pusher": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Main Conveyor": {
+              "normal_current": 4,
+              "warning_current": 5,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Ware Transfer": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Cross Conveyor": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            },
+            "Stacker": {
+              "normal_current": 3,
+              "warning_current": 4,
+              "normal_temperature": 60,
+              "warning_temperature": 70
+            }
+          }
         }
       }
     }
   },
   "parameter_units": {
     "current": "A",
-    "temperature": "°C",
-    "i2t": "A²s"
+    "temperature": "\u00b0C",
+    "i2t": "A\u00b2s"
   }
 }
