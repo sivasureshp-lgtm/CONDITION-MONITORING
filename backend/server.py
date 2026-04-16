@@ -188,7 +188,7 @@ def add_timestamp_watermark(photo_base64: str) -> str:
         
         draw = ImageDraw.Draw(image)
         timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
-                width, height = image.size
+        width, height = image.size
         
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
