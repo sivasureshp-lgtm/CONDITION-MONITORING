@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))  # India Standard Time
 from PIL import Image, ImageDraw, ImageFont
 import base64
 from io import BytesIO
@@ -186,8 +187,8 @@ def add_timestamp_watermark(photo_base64: str) -> str:
             image = image.resize((max_width, int(image.height * ratio)), Image.LANCZOS)
         
         draw = ImageDraw.Draw(image)
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        width, height = image.size
+        timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+                width, height = image.size
         
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
@@ -335,7 +336,7 @@ async def root():
 
 @api_router.get("/healthz")
 async def health_check():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(IST).isoformat()}
 
 @api_router.get("/machine-config/{plant}/{machine}")
 async def get_machine_config(plant: str, machine: str):
@@ -359,7 +360,7 @@ async def add_bulk_condition_data(data: dict):
         photo_base64 = data.get("photo_base64")
         entry_source = data.get("entry_source", "Field")
         
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(IST)
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         
         # Process photo
@@ -467,7 +468,7 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     elif data.current >= data.normal_current:
         status = "Warning"
     
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(IST)
     
     photo_url = ""
     has_photo = False
