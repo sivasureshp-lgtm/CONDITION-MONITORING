@@ -6,7 +6,7 @@ Backend Server (Render Free Tier Edition)
 - Cloudinary = photo storage
 - Self-ping = keeps Render free tier awake
 """
-
+import gc
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -129,6 +129,7 @@ except Exception as e:
 readings_cache = []  # Cache of recent readings
 cache_loaded = False
 
+MAX_CACHE_SIZE = 500
 async def load_cache_from_sheets():
     """Load recent readings from Google Sheets into memory cache"""
     global readings_cache, cache_loaded
@@ -139,13 +140,15 @@ async def load_cache_from_sheets():
     
     try:
         all_data = readings_sheet.get_all_records()
-        readings_cache = all_data[-2000:] if len(all_data) > 2000 else all_data  # Keep last 2000
+        readings_cache = all_data[-MAX_CACHE_SIZE:] if len(all_data) > MAX_CACHE_SIZE else all_data
+        for r in readings_cache:
+            r.pop("photo_base64", None)
         cache_loaded = True
-        logging.info(f"✅ Loaded {len(readings_cache)} readings into cache")
+        logging.info(f"✅ Loaded {len(readings_cache)} readings into cache (max {MAX_CACHE_SIZE})")
     except Exception as e:
         logging.error(f"Cache load error: {e}")
-        cache_loaded = True  # Don't block startup
-
+        cache_loaded = True
+        
 # ============================================================
 # APP SETUP
 # ============================================================
@@ -226,11 +229,11 @@ def add_timestamp_watermark(photo_base64: str) -> str:
         buffered = BytesIO()
         image.save(buffered, format="JPEG", quality=75)
         img_str = base64.b64encode(buffered.getvalue()).decode()
-        
+        gc.collect()
         return f"data:image/jpeg;base64,{img_str}"
     
     except Exception as e:
-        logging.error(f"Watermark error: {e}")
+        logging.error(f"Watermark error: {e}")    
         return photo_base64
 
 def upload_photo_to_cloudinary(photo_base64: str, plant: str, machine: str) -> str:
@@ -446,6 +449,8 @@ async def add_bulk_condition_data(data: dict):
         
         # Batch write to Google Sheets
         sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
+        if len(readings_cache) > MAX_CACHE_SIZE:
+            del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
         
         return {
             "message": "Bulk readings submitted successfully",
@@ -503,6 +508,8 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     # Save to sheets and cache
     save_reading_to_sheets(doc)
     readings_cache.append(doc)
+    if len(readings_cache) > MAX_CACHE_SIZE:
+        del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
     
     return {
         "message": "Data added successfully",
