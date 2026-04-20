@@ -80,8 +80,8 @@
               "warning_current": 4
             },
             "Sec1 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec1 Pusher Arm": {
               "normal_current": 2,
@@ -92,8 +92,8 @@
               "warning_current": 3
             },
             "Sec2 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec2 Pusher Arm": {
               "normal_current": 2,
@@ -104,8 +104,8 @@
               "warning_current": 3
             },
             "Sec3 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec3 Pusher Arm": {
               "normal_current": 2,
@@ -116,8 +116,8 @@
               "warning_current": 3
             },
             "Sec4 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec4 Pusher Arm": {
               "normal_current": 2,
@@ -128,8 +128,8 @@
               "warning_current": 3
             },
             "Sec5 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec5 Pusher Arm": {
               "normal_current": 2,
@@ -140,8 +140,8 @@
               "warning_current": 3
             },
             "Sec6 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec6 Pusher Arm": {
               "normal_current": 2,
@@ -152,8 +152,8 @@
               "warning_current": 3
             },
             "Sec7 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec7 Pusher Arm": {
               "normal_current": 2,
@@ -164,8 +164,8 @@
               "warning_current": 3
             },
             "Sec8 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec8 Pusher Arm": {
               "normal_current": 2,
@@ -438,8 +438,8 @@
               "warning_current": 4
             },
             "Sec1 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec1 Pusher Arm": {
               "normal_current": 2,
@@ -454,8 +454,8 @@
               "warning_current": 4
             },
             "Sec2 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec2 Pusher Arm": {
               "normal_current": 2,
@@ -470,8 +470,8 @@
               "warning_current": 4
             },
             "Sec3 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec3 Pusher Arm": {
               "normal_current": 2,
@@ -486,8 +486,8 @@
               "warning_current": 4
             },
             "Sec4 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec4 Pusher Arm": {
               "normal_current": 2,
@@ -502,8 +502,8 @@
               "warning_current": 4
             },
             "Sec5 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec5 Pusher Arm": {
               "normal_current": 2,
@@ -518,8 +518,8 @@
               "warning_current": 4
             },
             "Sec6 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec6 Pusher Arm": {
               "normal_current": 2,
@@ -534,8 +534,8 @@
               "warning_current": 4
             },
             "Sec7 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec7 Pusher Arm": {
               "normal_current": 2,
@@ -550,8 +550,8 @@
               "warning_current": 4
             },
             "Sec8 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec8 Pusher Arm": {
               "normal_current": 2,
@@ -645,8 +645,8 @@
               "warning_current": 4
             },
             "Sec1 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec1 Pusher Arm": {
               "normal_current": 2,
@@ -657,8 +657,8 @@
               "warning_current": 3
             },
             "Sec2 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec2 Pusher Arm": {
               "normal_current": 2,
@@ -669,8 +669,8 @@
               "warning_current": 3
             },
             "Sec3 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec3 Pusher Arm": {
               "normal_current": 2,
@@ -681,8 +681,8 @@
               "warning_current": 3
             },
             "Sec4 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec4 Pusher Arm": {
               "normal_current": 2,
@@ -693,8 +693,8 @@
               "warning_current": 3
             },
             "Sec5 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec5 Pusher Arm": {
               "normal_current": 2,
@@ -705,8 +705,8 @@
               "warning_current": 3
             },
             "Sec6 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec6 Pusher Arm": {
               "normal_current": 2,
@@ -717,8 +717,8 @@
               "warning_current": 3
             },
             "Sec7 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec7 Pusher Arm": {
               "normal_current": 2,
@@ -729,8 +729,8 @@
               "warning_current": 3
             },
             "Sec8 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec8 Pusher Arm": {
               "normal_current": 2,
@@ -819,8 +819,8 @@
               "warning_current": 4
             },
             "Sec1 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec1 Pusher Arm": {
               "normal_current": 2,
@@ -831,8 +831,8 @@
               "warning_current": 3
             },
             "Sec2 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec2 Pusher Arm": {
               "normal_current": 2,
@@ -843,8 +843,8 @@
               "warning_current": 3
             },
             "Sec3 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec3 Pusher Arm": {
               "normal_current": 2,
@@ -855,8 +855,8 @@
               "warning_current": 3
             },
             "Sec4 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec4 Pusher Arm": {
               "normal_current": 2,
@@ -867,8 +867,8 @@
               "warning_current": 3
             },
             "Sec5 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec5 Pusher Arm": {
               "normal_current": 2,
@@ -879,8 +879,8 @@
               "warning_current": 3
             },
             "Sec6 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec6 Pusher Arm": {
               "normal_current": 2,
@@ -891,8 +891,8 @@
               "warning_current": 3
             },
             "Sec7 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec7 Pusher Arm": {
               "normal_current": 2,
@@ -903,8 +903,8 @@
               "warning_current": 3
             },
             "Sec8 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec8 Pusher Arm": {
               "normal_current": 2,
@@ -986,8 +986,8 @@
               "warning_current": 4
             },
             "Sec1 Takeout": {
-              "normal_current": 2.5,
-              "warning_current": 3
+              "normal_current": 4,
+              "warning_current": 5
             },
             "Sec1 Pusher Arm": {
               "normal_current": 2,
