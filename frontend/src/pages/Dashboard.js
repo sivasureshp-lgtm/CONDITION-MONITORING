@@ -72,17 +72,60 @@ const Dashboard = () => {
                       </div>
                       <span className="px-2 py-1 bg-[#E11D48] text-white text-xs font-bold uppercase">ALARM</span>
                     </div>
-                    <div className="mt-3 space-y-1">
-                      <p className="text-sm text-zinc-700">
-                        <span className="font-bold">Current:</span> 
-                        <span className="font-mono text-[#E11D48] font-bold ml-2">{alarm.current}A</span>
-                      </p>
-                      <p className="text-sm text-zinc-700">
-                        <span className="font-bold">Limit:</span> 
-                        <span className="font-mono ml-2">{alarm.warning_current}A</span>
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-2">
-                        {new Date(alarm.timestamp).toLocaleString()}
+                    <div className="mt-3 space-y-2">
+                      {/* CURRENT (A) */}
+                      {alarm.current !== "" && alarm.current !== null && alarm.current !== undefined && (
+                        <div className="border-l-2 border-red-200 pl-3">
+                          <p className="text-sm text-zinc-700">
+                            <span className="font-bold">Current:</span>
+                            <span className="font-mono text-[#E11D48] font-bold ml-2">{alarm.current}A</span>
+                          </p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            <span>Normal:</span>
+                            <span className="font-mono ml-1">{alarm.normal_current !== "" ? `${alarm.normal_current}A` : "—"}</span>
+                            <span className="mx-2 text-zinc-400">|</span>
+                            <span>Warning:</span>
+                            <span className="font-mono ml-1">{alarm.warning_current !== "" ? `${alarm.warning_current}A` : "—"}</span>
+                          </p>
+                        </div>
+                      )}
+
+                      {/* TEMPERATURE (°C) */}
+                      {alarm.temperature !== "" && alarm.temperature !== null && alarm.temperature !== undefined && (
+                        <div className="border-l-2 border-red-200 pl-3">
+                          <p className="text-sm text-zinc-700">
+                            <span className="font-bold">Temperature:</span>
+                            <span className="font-mono text-[#E11D48] font-bold ml-2">{alarm.temperature}°C</span>
+                          </p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            <span>Normal:</span>
+                            <span className="font-mono ml-1">{alarm.normal_temperature !== "" ? `${alarm.normal_temperature}°C` : "—"}</span>
+                            <span className="mx-2 text-zinc-400">|</span>
+                            <span>Warning:</span>
+                            <span className="font-mono ml-1">{alarm.warning_temperature !== "" ? `${alarm.warning_temperature}°C` : "—"}</span>
+                          </p>
+                        </div>
+                      )}
+
+                      {/* I²t (A²s) */}
+                      {alarm.i2t !== "" && alarm.i2t !== null && alarm.i2t !== undefined && (
+                        <div className="border-l-2 border-red-200 pl-3">
+                          <p className="text-sm text-zinc-700">
+                            <span className="font-bold">I²t:</span>
+                            <span className="font-mono text-[#E11D48] font-bold ml-2">{alarm.i2t} A²s</span>
+                          </p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            <span>Normal:</span>
+                            <span className="font-mono ml-1">{alarm.normal_i2t !== "" ? `${alarm.normal_i2t}` : "—"}</span>
+                            <span className="mx-2 text-zinc-400">|</span>
+                            <span>Warning:</span>
+                            <span className="font-mono ml-1">{alarm.warning_i2t !== "" ? `${alarm.warning_i2t}` : "—"}</span>
+                          </p>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-zinc-500 pt-2 border-t border-zinc-100">
+                        {alarm.timestamp ? new Date(alarm.timestamp).toLocaleString() : ""}
                       </p>
                     </div>
                   </div>
