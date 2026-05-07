@@ -343,14 +343,54 @@ async def health_check():
 
 @api_router.get("/machine-config/{plant}/{machine}")
 async def get_machine_config(plant: str, machine: str):
-    """Get motor configuration for a specific machine"""
+    """Get motor configuration for a specific machine.
+
+    Reads machine_config.json fresh from disk on every request so that updates
+    pushed via GitHub take effect immediately without needing a server restart.
+    Returns no-store headers to prevent browser / CDN caching of stale limits.
+    """
     try:
-        if plant in MACHINE_CONFIG["plants"] and machine in MACHINE_CONFIG["plants"][plant]["machines"]:
-            return MACHINE_CONFIG["plants"][plant]["machines"][machine]
+        # Read fresh from disk every time (file is small, cost is negligible)
+        with open(ROOT_DIR / 'machine_config.json', 'r') as f:
+            fresh_config = json.load(f)
+
+        if plant in fresh_config["plants"] and machine in fresh_config["plants"][plant]["machines"]:
+            data = fresh_config["plants"][plant]["machines"][machine]
+            return JSONResponse(
+                content=data,
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                }
+            )
         else:
             raise HTTPException(status_code=404, detail="Machine configuration not found")
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="machine_config.json not found on server")
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"machine_config.json is invalid: {e}")
     except KeyError:
         raise HTTPException(status_code=404, detail="Machine configuration not found")
+
+
+@api_router.post("/reload-config")
+async def reload_machine_config():
+    """Force-reload machine_config.json into the in-memory MACHINE_CONFIG global.
+
+    The /machine-config/{plant}/{machine} endpoint already reads fresh from disk,
+    so this is rarely needed. Use this only if other code paths (not yet updated)
+    still rely on the global MACHINE_CONFIG variable and you've changed the file.
+    """
+    global MACHINE_CONFIG
+    try:
+        with open(ROOT_DIR / 'machine_config.json', 'r') as f:
+            MACHINE_CONFIG = json.load(f)
+        return {"status": "ok", "message": "machine_config.json reloaded successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reload failed: {e}")
 
 @api_router.post("/condition-monitoring/bulk")
 async def add_bulk_condition_data(data: dict):
