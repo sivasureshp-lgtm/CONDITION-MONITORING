@@ -384,41 +384,49 @@ async def add_bulk_condition_data(data: dict):
             motor = reading.get("motor")
             status = "OK"
             
+            # Status thresholds (per user spec):
+            #   reading <  normal              -> OK
+            #   normal  <= reading <  warning  -> Warning
+            #   reading >= warning             -> Alarm
+            # Worst-of-three rule: highest severity across current, temp, i2t wins.
+            # Severity rank: OK=0, Warning=1, Alarm=2.
+            severity = 0  # 0=OK, 1=Warning, 2=Alarm
+
+            def _evaluate(value, normal, warning):
+                """Return severity (0/1/2) for one parameter."""
+                if warning > 0 and value >= warning:
+                    return 2
+                if normal > 0 and value >= normal:
+                    return 1
+                return 0
+
             # Check current
             if reading.get("current"):
                 current = float(reading.get("current"))
                 normal_current = float(reading.get("normal_current", 0))
                 warning_current = float(reading.get("warning_current", 0))
-                if current >= warning_current:
-                    status = "Alarm"
-                    alarm_count += 1
-                elif current >= normal_current:
-                    status = "Warning"
-                    warning_count += 1
-            
+                severity = max(severity, _evaluate(current, normal_current, warning_current))
+
             # Check temperature
             if reading.get("temperature"):
                 temp = float(reading.get("temperature"))
                 normal_temp = float(reading.get("normal_temperature", 0))
                 warning_temp = float(reading.get("warning_temperature", 0))
-                if temp >= warning_temp:
-                    status = "Alarm"
-                    alarm_count += 1
-                elif temp >= normal_temp and status == "OK":
-                    status = "Warning"
-                    warning_count += 1
-            
+                severity = max(severity, _evaluate(temp, normal_temp, warning_temp))
+
             # Check I2t
             if reading.get("i2t"):
                 i2t_val = float(reading.get("i2t"))
                 normal_i2t = float(reading.get("normal_i2t", 0))
                 warning_i2t = float(reading.get("warning_i2t", 0))
-                if i2t_val >= warning_i2t:
-                    status = "Alarm"
-                    alarm_count += 1
-                elif i2t_val >= normal_i2t and status == "OK":
-                    status = "Warning"
-                    warning_count += 1
+                severity = max(severity, _evaluate(i2t_val, normal_i2t, warning_i2t))
+
+            if severity == 2:
+                status = "Alarm"
+                alarm_count += 1
+            elif severity == 1:
+                status = "Warning"
+                warning_count += 1
             
             doc = {
                 "id": str(uuid.uuid4())[:8],
@@ -467,10 +475,14 @@ async def add_bulk_condition_data(data: dict):
 @api_router.post("/condition-monitoring")
 async def add_condition_data(data: ConditionMonitoringCreate):
     """Add single condition monitoring data"""
+    # Status thresholds:
+    #   reading <  normal              -> OK
+    #   normal  <= reading <  warning  -> Warning
+    #   reading >= warning             -> Alarm
     status = "OK"
-    if data.current >= data.warning_current:
+    if data.warning_current > 0 and data.current >= data.warning_current:
         status = "Alarm"
-    elif data.current >= data.normal_current:
+    elif data.normal_current > 0 and data.current >= data.normal_current:
         status = "Warning"
     
     timestamp = datetime.now(IST)
@@ -555,7 +567,8 @@ async def get_active_alarms():
         if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
             latest[key] = r
     
-    # Filter alarms
+    # Filter alarms — include both "Alarm" and "Warning" so dashboard can show full picture
+    # (UI decides how to display each based on status field)
     alarms = []
     for r in latest.values():
         status = r.get("Status", r.get("status", ""))
@@ -567,12 +580,17 @@ async def get_active_alarms():
                 "current": r.get("Current", r.get("current", "")),
                 "temperature": r.get("Temperature", r.get("temperature", "")),
                 "i2t": r.get("I2t", r.get("i2t", "")),
+                "normal_current": r.get("Normal_Current", r.get("normal_current", "")),
                 "warning_current": r.get("Warning_Current", r.get("warning_current", "")),
+                "normal_temperature": r.get("Normal_Temperature", r.get("normal_temperature", "")),
+                "warning_temperature": r.get("Warning_Temperature", r.get("warning_temperature", "")),
+                "normal_i2t": r.get("Normal_I2t", r.get("normal_i2t", "")),
+                "warning_i2t": r.get("Warning_I2t", r.get("warning_i2t", "")),
                 "status": "Alarm",
                 "timestamp": r.get("Timestamp", r.get("timestamp", "")),
                 "verified_by": r.get("Verified_By", r.get("verified_by", "")),
             })
-    
+
     return alarms
 
 @api_router.get("/machine-health/{plant}")
