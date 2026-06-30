@@ -5,6 +5,7 @@ Backend Server (Render Free Tier Edition)
 - Google Sheets = primary database
 - Cloudinary = photo storage
 - Self-ping = keeps Render free tier awake
+- Gmail SMTP = daily report email (no MCP dependency)
 """
 import gc
 from fastapi import FastAPI, APIRouter, HTTPException
@@ -14,6 +15,9 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
@@ -29,6 +33,17 @@ import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# ============================================================
+# GMAIL SMTP CONFIG (for daily report emails)
+# ============================================================
+GMAIL_SENDER = os.environ.get('GMAIL_SENDER', 'sivasuresh.p@gmail.com')
+GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+REPORT_RECIPIENTS = [r.strip() for r in os.environ.get('REPORT_RECIPIENTS', 'suresh.perumalla@gerresheimer.com').split(',') if r.strip()]
+REPORT_CC = [r.strip() for r in os.environ.get('REPORT_CC', 'makrand.kshirsagar@gerresheimer.com,anish.k@gerresheimer.com').split(',') if r.strip()]
+# Daily send time in IST (24h). Default 07:10 to match historical schedule.
+REPORT_SEND_HOUR_IST = int(os.environ.get('REPORT_SEND_HOUR_IST', '7'))
+REPORT_SEND_MINUTE_IST = int(os.environ.get('REPORT_SEND_MINUTE_IST', '10'))
 
 # Load machine configuration
 with open(ROOT_DIR / 'machine_config.json', 'r') as f:
@@ -328,6 +343,257 @@ def save_bulk_readings_to_sheets(readings_list: list):
     except Exception as e:
         logging.error(f"Sheets bulk write error: {e}")
         return False
+
+# ============================================================
+# DAILY REPORT EMAIL
+# ============================================================
+
+def _build_report_data():
+    """Summarise the last 24 hours of readings into a report dict."""
+    cutoff = datetime.now(IST) - timedelta(hours=24)
+    cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
+    recent = [r for r in readings_cache if r.get("Timestamp", r.get("timestamp", "")) >= cutoff_str]
+
+    # Latest reading per motor (for status counts)
+    latest = {}
+    for r in recent:
+        key = f"{r.get('Plant', r.get('plant',''))}_{r.get('Machine', r.get('machine',''))}_{r.get('Motor', r.get('motor',''))}"
+        ts = r.get("Timestamp", r.get("timestamp", ""))
+        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
+            latest[key] = r
+
+    total = len(latest)
+    ok_count = sum(1 for r in latest.values() if r.get("Status", r.get("status", "")) == "OK")
+    warning_count = sum(1 for r in latest.values() if r.get("Status", r.get("status", "")) == "Warning")
+    alarm_count = sum(1 for r in latest.values() if r.get("Status", r.get("status", "")) == "Alarm")
+
+    alarms = [r for r in latest.values() if r.get("Status", r.get("status", "")) == "Alarm"]
+    warnings = [r for r in latest.values() if r.get("Status", r.get("status", "")) == "Warning"]
+
+    machines = sorted({r.get("Machine", r.get("machine", "")) for r in latest.values()})
+
+    # Detect critical: I2t >= warning_i2t or temp >= warning_temp (and severity == Alarm)
+    criticals = []
+    for r in alarms:
+        i2t = r.get("I2t", r.get("i2t", ""))
+        wi2t = r.get("Warning_I2t", r.get("warning_i2t", ""))
+        temp = r.get("Temperature", r.get("temperature", ""))
+        wtemp = r.get("Warning_Temperature", r.get("warning_temperature", ""))
+        is_critical = False
+        if i2t and wi2t:
+            try:
+                if float(i2t) >= float(wi2t):
+                    is_critical = True
+            except (ValueError, TypeError):
+                pass
+        if temp and wtemp:
+            try:
+                if float(temp) >= float(wtemp):
+                    is_critical = True
+            except (ValueError, TypeError):
+                pass
+        if is_critical:
+            criticals.append(r)
+
+    critical_count = len(criticals)
+
+    return {
+        "date": datetime.now(IST).strftime("%d-%b-%Y"),
+        "total": total,
+        "ok": ok_count,
+        "warning": warning_count,
+        "alarm": alarm_count,
+        "critical": critical_count,
+        "machines": machines,
+        "alarms": alarms,
+        "warnings": warnings,
+        "criticals": criticals,
+        "recent_count": len(recent),
+    }
+
+
+def _build_html_report(d: dict) -> str:
+    """Generate the HTML email body matching the daily report format."""
+
+    def _motor_label(r):
+        machine = r.get("Machine", r.get("machine", ""))
+        motor = r.get("Motor", r.get("motor", ""))
+        return f"{machine} → {motor}"
+
+    def _reading_detail(r):
+        parts = []
+        cur = r.get("Current", r.get("current", ""))
+        wcur = r.get("Warning_Current", r.get("warning_current", ""))
+        temp = r.get("Temperature", r.get("temperature", ""))
+        wtemp = r.get("Warning_Temperature", r.get("warning_temperature", ""))
+        i2t = r.get("I2t", r.get("i2t", ""))
+        wi2t = r.get("Warning_I2t", r.get("warning_i2t", ""))
+        if cur and wcur:
+            parts.append(f"I²t {cur} ≥ {wcur}")
+        if temp and wtemp:
+            parts.append(f"Temp {temp}°C ≥ {wtemp}°C")
+        if i2t and wi2t:
+            parts.append(f"I²t {i2t} (threshold {wi2t})")
+        return "; ".join(parts) if parts else "Alarm threshold exceeded"
+
+    machines_str = ", ".join(d["machines"]) if d["machines"] else "—"
+
+    critical_html = ""
+    if d["criticals"]:
+        items = "".join(
+            f'<li><b>{_motor_label(r)}</b>: {_reading_detail(r)} — CRITICAL</li>'
+            for r in d["criticals"]
+        )
+        critical_html = f"""
+        <div style="background:#fff3cd;border-left:4px solid #dc3545;padding:12px 16px;margin:16px 0;border-radius:4px;">
+          <b style="color:#dc3545;">&#9888; CRITICAL ALERT &mdash; Immediate Action Required</b>
+          <ul style="margin:8px 0 0 0;padding-left:20px;color:#333;">{items}</ul>
+        </div>"""
+
+    alarm_rows = "".join(
+        f"""<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">{_motor_label(r)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#dc3545;font-weight:bold;">ALARM</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">{_reading_detail(r)}</td>
+        </tr>"""
+        for r in d["alarms"]
+    )
+
+    warning_rows = "".join(
+        f"""<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">{_motor_label(r)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#fd7e14;font-weight:bold;">WARNING</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">{_reading_detail(r)}</td>
+        </tr>"""
+        for r in d["warnings"]
+    ) if d["warnings"] else ""
+
+    alerts_table = ""
+    if alarm_rows or warning_rows:
+        alerts_table = f"""
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:8px;font-size:13px;">
+          <tr style="background:#f8f9fa;">
+            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #dee2e6;">Motor</th>
+            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #dee2e6;">Status</th>
+            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #dee2e6;">Details</th>
+          </tr>
+          {alarm_rows}{warning_rows}
+        </table>"""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:20px 0;">
+  <tr><td align="center">
+  <table width="680" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+    <!-- HEADER -->
+    <tr><td style="background:#002fa7;padding:24px 28px;">
+      <div style="color:#fff;font-size:22px;font-weight:bold;">Condition Monitoring &mdash; Daily Report</div>
+      <div style="color:#aac4ff;font-size:13px;margin-top:6px;">
+        Gerresheimer Glass India &nbsp;|&nbsp; {d['date']} &nbsp;|&nbsp; Period: Last 24 Hours
+        &nbsp;|&nbsp; {d['total']} readings &nbsp;|&nbsp; {machines_str}
+      </div>
+    </td></tr>
+
+    <!-- BODY -->
+    <tr><td style="padding:24px 28px;">
+
+      <div style="font-size:14px;font-weight:bold;color:#002fa7;letter-spacing:1px;margin-bottom:12px;">EXECUTIVE SUMMARY</div>
+
+      <!-- STAT BOXES -->
+      <table cellpadding="0" cellspacing="8" style="width:100%;margin-bottom:20px;">
+        <tr>
+          <td align="center" style="background:#e8f4fd;border-radius:6px;padding:14px 10px;width:20%;">
+            <div style="font-size:28px;font-weight:bold;color:#0d6efd;">{d['total']}</div>
+            <div style="font-size:11px;color:#555;margin-top:4px;">TOTAL</div>
+          </td>
+          <td align="center" style="background:#d1f5d3;border-radius:6px;padding:14px 10px;width:20%;">
+            <div style="font-size:28px;font-weight:bold;color:#198754;">{d['ok']}</div>
+            <div style="font-size:11px;color:#555;margin-top:4px;">OK</div>
+          </td>
+          <td align="center" style="background:#fff3cd;border-radius:6px;padding:14px 10px;width:20%;">
+            <div style="font-size:28px;font-weight:bold;color:#fd7e14;">{d['warning']}</div>
+            <div style="font-size:11px;color:#555;margin-top:4px;">WARNING</div>
+          </td>
+          <td align="center" style="background:#fde8e8;border-radius:6px;padding:14px 10px;width:20%;">
+            <div style="font-size:28px;font-weight:bold;color:#dc3545;">{d['alarm']}</div>
+            <div style="font-size:11px;color:#555;margin-top:4px;">ALARM</div>
+          </td>
+          <td align="center" style="background:#f3e8ff;border-radius:6px;padding:14px 10px;width:20%;">
+            <div style="font-size:28px;font-weight:bold;color:#6f42c1;">{'&#9651; ' if d['critical'] else ''}{d['critical']}</div>
+            <div style="font-size:11px;color:#555;margin-top:4px;">CRITICAL</div>
+          </td>
+        </tr>
+      </table>
+
+      {critical_html}
+
+      {'<div style="font-size:14px;font-weight:bold;color:#002fa7;letter-spacing:1px;margin:20px 0 8px;">ALARMS &amp; WARNINGS</div>' + alerts_table if alerts_table else ''}
+
+    </td></tr>
+
+    <!-- FOOTER -->
+    <tr><td style="background:#f8f9fa;padding:14px 28px;font-size:11px;color:#888;border-top:1px solid #dee2e6;">
+      Generated automatically by Condition Monitoring System &mdash; Gerresheimer Glass India
+      &nbsp;|&nbsp; {datetime.now(IST).strftime("%d %b %Y %H:%M IST")}
+    </td></tr>
+
+  </table>
+  </td></tr>
+</table>
+</body>
+</html>"""
+
+
+def send_daily_report_email() -> dict:
+    """Build and send the daily condition monitoring report via Gmail SMTP.
+    Returns a dict with keys: success (bool), message (str).
+    """
+    if not GMAIL_APP_PASSWORD:
+        return {"success": False, "message": "GMAIL_APP_PASSWORD environment variable not set"}
+
+    try:
+        d = _build_report_data()
+        html_body = _build_html_report(d)
+        plain_body = (
+            f"Condition Monitoring — Daily Report — {d['date']}\n"
+            f"Gerresheimer Glass India | {d['total']} readings | "
+            f"{d['ok']} OK | {d['warning']} Warning | {d['alarm']} Alarm | {d['critical']} Critical\n\n"
+            "Please view this email in HTML format for the full formatted report."
+        )
+
+        subject = f"Condition Monitoring — Daily Report — {d['date']}"
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = GMAIL_SENDER
+        msg["To"] = ", ".join(REPORT_RECIPIENTS)
+        if REPORT_CC:
+            msg["Cc"] = ", ".join(REPORT_CC)
+
+        msg.attach(MIMEText(plain_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        all_recipients = REPORT_RECIPIENTS + REPORT_CC
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_SENDER, all_recipients, msg.as_string())
+
+        logging.info(f"✅ Daily report email sent to {all_recipients}")
+        return {"success": True, "message": f"Report sent to {', '.join(all_recipients)}", "stats": d}
+
+    except smtplib.SMTPAuthenticationError:
+        msg = "Gmail authentication failed — check GMAIL_APP_PASSWORD"
+        logging.error(f"❌ {msg}")
+        return {"success": False, "message": msg}
+    except Exception as e:
+        logging.error(f"❌ Email send error: {e}")
+        return {"success": False, "message": str(e)}
+
 
 # ============================================================
 # API ROUTES
@@ -729,13 +995,55 @@ async def get_stats():
     """Get system stats"""
     if not cache_loaded:
         await load_cache_from_sheets()
-    
+
     return {
         "total_readings": len(readings_cache),
         "google_sheets_connected": config_ready,
         "cloudinary_connected": CLOUDINARY_ENABLED,
         "cache_loaded": cache_loaded
     }
+
+@api_router.post("/send-daily-report")
+async def trigger_send_daily_report():
+    """Manually trigger the daily condition monitoring report email."""
+    if not cache_loaded:
+        await load_cache_from_sheets()
+    result = send_daily_report_email()
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+# ============================================================
+# DAILY REPORT SCHEDULER
+# ============================================================
+
+async def daily_report_scheduler():
+    """Sends the daily report email at REPORT_SEND_HOUR_IST:REPORT_SEND_MINUTE_IST IST every day."""
+    if not GMAIL_APP_PASSWORD:
+        logging.warning("⚠️ GMAIL_APP_PASSWORD not set — daily report auto-send disabled")
+        return
+
+    logging.info(f"📧 Daily report scheduler started — will send at {REPORT_SEND_HOUR_IST:02d}:{REPORT_SEND_MINUTE_IST:02d} IST")
+    last_sent_date = None
+
+    while True:
+        now = datetime.now(IST)
+        today = now.date()
+
+        if (
+            now.hour == REPORT_SEND_HOUR_IST
+            and now.minute == REPORT_SEND_MINUTE_IST
+            and last_sent_date != today
+        ):
+            logging.info(f"⏰ Scheduled daily report triggered at {now.strftime('%H:%M IST')}")
+            result = send_daily_report_email()
+            if result["success"]:
+                last_sent_date = today
+            else:
+                logging.error(f"Scheduled report failed: {result['message']}")
+
+        await asyncio.sleep(60)  # check every minute
+
 
 # ============================================================
 # SELF-PING (Keeps Render Free Tier Awake)
@@ -766,9 +1074,10 @@ async def self_ping():
 
 @app.on_event("startup")
 async def startup():
-    """Load cache and start self-ping on startup"""
+    """Load cache and start background tasks on startup"""
     await load_cache_from_sheets()
     asyncio.create_task(self_ping())
+    asyncio.create_task(daily_report_scheduler())
     logging.info("🚀 Condition Monitoring System started")
 
 # Include router
