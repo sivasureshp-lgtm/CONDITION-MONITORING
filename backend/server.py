@@ -5,7 +5,7 @@ Backend Server (Render Free Tier Edition)
 - Google Sheets = primary database
 - Cloudinary = photo storage
 - Self-ping = keeps Render free tier awake
-- Gmail SMTP = daily report email (no MCP dependency)
+- Resend HTTP API = daily report email (SMTP blocked on Render free tier)
 """
 import gc
 from fastapi import FastAPI, APIRouter, HTTPException
@@ -35,10 +35,11 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # ============================================================
-# GMAIL SMTP CONFIG (for daily report emails)
+# EMAIL CONFIG (for daily report emails via Resend)
 # ============================================================
 GMAIL_SENDER = os.environ.get('GMAIL_SENDER', 'sivasuresh.p@gmail.com')
-GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')  # kept for reference
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 REPORT_RECIPIENTS = [r.strip() for r in os.environ.get('REPORT_RECIPIENTS', 'suresh.perumalla@gerresheimer.com').split(',') if r.strip()]
 REPORT_CC = [r.strip() for r in os.environ.get('REPORT_CC', 'makrand.kshirsagar@gerresheimer.com,anish.k@gerresheimer.com').split(',') if r.strip()]
 # Daily send time in IST (24h). Default 07:10 to match historical schedule.
@@ -373,7 +374,6 @@ def _build_report_data():
 
     machines = sorted({r.get("Machine", r.get("machine", "")) for r in latest.values()})
 
-    # Detect critical: I2t >= warning_i2t or temp >= warning_temp (and severity == Alarm)
     criticals = []
     for r in alarms:
         i2t = r.get("I2t", r.get("i2t", ""))
@@ -430,7 +430,7 @@ def _build_html_report(d: dict) -> str:
         i2t = r.get("I2t", r.get("i2t", ""))
         wi2t = r.get("Warning_I2t", r.get("warning_i2t", ""))
         if cur and wcur:
-            parts.append(f"I²t {cur} ≥ {wcur}")
+            parts.append(f"Current {cur} ≥ {wcur}")
         if temp and wtemp:
             parts.append(f"Temp {temp}°C ≥ {wtemp}°C")
         if i2t and wi2t:
@@ -523,7 +523,7 @@ def _build_html_report(d: dict) -> str:
             <div style="font-size:11px;color:#555;margin-top:4px;">ALARM</div>
           </td>
           <td align="center" style="background:#f3e8ff;border-radius:6px;padding:14px 10px;width:20%;">
-            <div style="font-size:28px;font-weight:bold;color:#6f42c1;">{'&#9651; ' if d['critical'] else ''}{d['critical']}</div>
+            <div style="font-size:28px;font-weight:bold;color:#6f42c1;">{d['critical']}</div>
             <div style="font-size:11px;color:#555;margin-top:4px;">CRITICAL</div>
           </td>
         </tr>
@@ -549,11 +549,9 @@ def _build_html_report(d: dict) -> str:
 
 
 def send_daily_report_email() -> dict:
-    """Build and send the daily condition monitoring report via Gmail SMTP.
-    Returns a dict with keys: success (bool), message (str).
-    """
-    if not GMAIL_APP_PASSWORD:
-        return {"success": False, "message": "GMAIL_APP_PASSWORD environment variable not set"}
+    """Build and send the daily condition monitoring report via Resend HTTP API."""
+    if not RESEND_API_KEY:
+        return {"success": False, "message": "RESEND_API_KEY environment variable not set"}
 
     try:
         d = _build_report_data()
@@ -564,32 +562,32 @@ def send_daily_report_email() -> dict:
             f"{d['ok']} OK | {d['warning']} Warning | {d['alarm']} Alarm | {d['critical']} Critical\n\n"
             "Please view this email in HTML format for the full formatted report."
         )
-
         subject = f"Condition Monitoring — Daily Report — {d['date']}"
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = GMAIL_SENDER
-        msg["To"] = ", ".join(REPORT_RECIPIENTS)
-        if REPORT_CC:
-            msg["Cc"] = ", ".join(REPORT_CC)
-
-        msg.attach(MIMEText(plain_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
-
+        payload = {
+            "from": f"Condition Monitoring <{GMAIL_SENDER}>",
+            "to": REPORT_RECIPIENTS,
+            "cc": REPORT_CC,
+            "subject": subject,
+            "text": plain_body,
+            "html": html_body,
+        }
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                "https://api.resend.com/emails",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
         all_recipients = REPORT_RECIPIENTS + REPORT_CC
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_SENDER, all_recipients, msg.as_string())
-
-        logging.info(f"✅ Daily report email sent to {all_recipients}")
-        return {"success": True, "message": f"Report sent to {', '.join(all_recipients)}", "stats": d}
-
-    except smtplib.SMTPAuthenticationError:
-        msg = "Gmail authentication failed — check GMAIL_APP_PASSWORD"
-        logging.error(f"❌ {msg}")
-        return {"success": False, "message": msg}
+        if resp.status_code in (200, 201):
+            logging.info(f"✅ Daily report email sent to {all_recipients}")
+            return {"success": True, "message": f"Report sent to {', '.join(all_recipients)}", "stats": d}
+        else:
+            msg = f"Resend error {resp.status_code}: {resp.text}"
+            logging.error(f"❌ {msg}")
+            return {"success": False, "message": msg}
     except Exception as e:
         logging.error(f"❌ Email send error: {e}")
         return {"success": False, "message": str(e)}
@@ -609,14 +607,8 @@ async def health_check():
 
 @api_router.get("/machine-config/{plant}/{machine}")
 async def get_machine_config(plant: str, machine: str):
-    """Get motor configuration for a specific machine.
-
-    Reads machine_config.json fresh from disk on every request so that updates
-    pushed via GitHub take effect immediately without needing a server restart.
-    Returns no-store headers to prevent browser / CDN caching of stale limits.
-    """
+    """Get motor configuration for a specific machine."""
     try:
-        # Read fresh from disk every time (file is small, cost is negligible)
         with open(ROOT_DIR / 'machine_config.json', 'r') as f:
             fresh_config = json.load(f)
 
@@ -644,12 +636,7 @@ async def get_machine_config(plant: str, machine: str):
 
 @api_router.post("/reload-config")
 async def reload_machine_config():
-    """Force-reload machine_config.json into the in-memory MACHINE_CONFIG global.
-
-    The /machine-config/{plant}/{machine} endpoint already reads fresh from disk,
-    so this is rarely needed. Use this only if other code paths (not yet updated)
-    still rely on the global MACHINE_CONFIG variable and you've changed the file.
-    """
+    """Force-reload machine_config.json into the in-memory MACHINE_CONFIG global."""
     global MACHINE_CONFIG
     try:
         with open(ROOT_DIR / 'machine_config.json', 'r') as f:
@@ -672,7 +659,6 @@ async def add_bulk_condition_data(data: dict):
         timestamp = datetime.now(IST)
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Process photo
         photo_url = ""
         has_photo = False
         if photo_base64:
@@ -680,7 +666,6 @@ async def add_bulk_condition_data(data: dict):
             photo_url = upload_photo_to_cloudinary(watermarked, plant, machine)
             has_photo = True
         
-        # Process each reading
         inserted_count = 0
         alarm_count = 0
         warning_count = 0
@@ -688,39 +673,27 @@ async def add_bulk_condition_data(data: dict):
         
         for reading in readings_list:
             motor = reading.get("motor")
-            status = "OK"
-            
-            # Status thresholds (per user spec):
-            #   reading <  normal              -> OK
-            #   normal  <= reading <  warning  -> Warning
-            #   reading >= warning             -> Alarm
-            # Worst-of-three rule: highest severity across current, temp, i2t wins.
-            # Severity rank: OK=0, Warning=1, Alarm=2.
             severity = 0  # 0=OK, 1=Warning, 2=Alarm
 
             def _evaluate(value, normal, warning):
-                """Return severity (0/1/2) for one parameter."""
                 if warning > 0 and value >= warning:
                     return 2
                 if normal > 0 and value >= normal:
                     return 1
                 return 0
 
-            # Check current
             if reading.get("current"):
                 current = float(reading.get("current"))
                 normal_current = float(reading.get("normal_current", 0))
                 warning_current = float(reading.get("warning_current", 0))
                 severity = max(severity, _evaluate(current, normal_current, warning_current))
 
-            # Check temperature
             if reading.get("temperature"):
                 temp = float(reading.get("temperature"))
                 normal_temp = float(reading.get("normal_temperature", 0))
                 warning_temp = float(reading.get("warning_temperature", 0))
                 severity = max(severity, _evaluate(temp, normal_temp, warning_temp))
 
-            # Check I2t
             if reading.get("i2t"):
                 i2t_val = float(reading.get("i2t"))
                 normal_i2t = float(reading.get("normal_i2t", 0))
@@ -733,6 +706,8 @@ async def add_bulk_condition_data(data: dict):
             elif severity == 1:
                 status = "Warning"
                 warning_count += 1
+            else:
+                status = "OK"
             
             doc = {
                 "id": str(uuid.uuid4())[:8],
@@ -758,10 +733,9 @@ async def add_bulk_condition_data(data: dict):
             }
             
             docs_for_sheets.append(doc)
-            readings_cache.append(doc)  # Add to in-memory cache
+            readings_cache.append(doc)
             inserted_count += 1
         
-        # Batch write to Google Sheets
         sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
         if len(readings_cache) > MAX_CACHE_SIZE:
             del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
@@ -781,10 +755,6 @@ async def add_bulk_condition_data(data: dict):
 @api_router.post("/condition-monitoring")
 async def add_condition_data(data: ConditionMonitoringCreate):
     """Add single condition monitoring data"""
-    # Status thresholds:
-    #   reading <  normal              -> OK
-    #   normal  <= reading <  warning  -> Warning
-    #   reading >= warning             -> Alarm
     status = "OK"
     if data.warning_current > 0 and data.current >= data.warning_current:
         status = "Alarm"
@@ -823,7 +793,6 @@ async def add_condition_data(data: ConditionMonitoringCreate):
         "bulk_entry": False
     }
     
-    # Save to sheets and cache
     save_reading_to_sheets(doc)
     readings_cache.append(doc)
     if len(readings_cache) > MAX_CACHE_SIZE:
@@ -865,7 +834,6 @@ async def get_active_alarms():
     if not cache_loaded:
         await load_cache_from_sheets()
     
-    # Group by plant+machine+motor, get latest
     latest = {}
     for r in readings_cache:
         key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
@@ -873,8 +841,6 @@ async def get_active_alarms():
         if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
             latest[key] = r
     
-    # Filter alarms — include both "Alarm" and "Warning" so dashboard can show full picture
-    # (UI decides how to display each based on status field)
     alarms = []
     for r in latest.values():
         status = r.get("Status", r.get("status", ""))
@@ -905,7 +871,6 @@ async def get_machine_health(plant: str):
     if not cache_loaded:
         await load_cache_from_sheets()
     
-    # Get latest reading per motor
     latest = {}
     for r in readings_cache:
         rp = r.get("Plant", r.get("plant", ""))
@@ -916,7 +881,6 @@ async def get_machine_health(plant: str):
         if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
             latest[key] = r
     
-    # Group by machine
     machines = {}
     for r in latest.values():
         m = r.get("Machine", r.get("machine", ""))
@@ -952,7 +916,6 @@ async def get_plant_health():
     if not cache_loaded:
         await load_cache_from_sheets()
     
-    # Get latest reading per motor across all plants
     latest = {}
     for r in readings_cache:
         key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
@@ -960,7 +923,6 @@ async def get_plant_health():
         if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
             latest[key] = r
     
-    # Group by plant
     plants = {}
     for r in latest.values():
         p = r.get("Plant", r.get("plant", ""))
@@ -1019,8 +981,8 @@ async def trigger_send_daily_report():
 
 async def daily_report_scheduler():
     """Sends the daily report email at REPORT_SEND_HOUR_IST:REPORT_SEND_MINUTE_IST IST every day."""
-    if not GMAIL_APP_PASSWORD:
-        logging.warning("⚠️ GMAIL_APP_PASSWORD not set — daily report auto-send disabled")
+    if not RESEND_API_KEY:
+        logging.warning("⚠️ RESEND_API_KEY not set — daily report auto-send disabled")
         return
 
     logging.info(f"📧 Daily report scheduler started — will send at {REPORT_SEND_HOUR_IST:02d}:{REPORT_SEND_MINUTE_IST:02d} IST")
@@ -1042,7 +1004,7 @@ async def daily_report_scheduler():
             else:
                 logging.error(f"Scheduled report failed: {result['message']}")
 
-        await asyncio.sleep(60)  # check every minute
+        await asyncio.sleep(60)
 
 
 # ============================================================
@@ -1097,4 +1059,3 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
