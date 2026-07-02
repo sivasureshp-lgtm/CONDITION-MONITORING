@@ -564,7 +564,8 @@ def send_daily_report_email() -> dict:
         )
         subject = f"Condition Monitoring — Daily Report — {d['date']}"
         payload = {
-            "from": f"Condition Monitoring <{GMAIL_SENDER}>",
+            "from": "Condition Monitoring <onboarding@resend.dev>",
+            "reply_to": GMAIL_SENDER,
             "to": REPORT_RECIPIENTS,
             "cc": REPORT_CC,
             "subject": subject,
