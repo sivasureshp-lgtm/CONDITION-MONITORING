@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Camera, XCircle, Check } from "@phosphor-icons/react";
+import { Camera, XCircle, Check, QrCode, LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
+import { Html5Qrcode } from "html5-qrcode";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -12,6 +13,13 @@ const PLANT_CONFIG = {
   E: ["E1", "E2", "E3"]
 };
 
+// How long a QR scan stays valid before the engineer must re-scan.
+// Mirrors the existing photo staleness pattern (10 min) so a scan
+// can't be done in the office and used hours later in the field.
+const QR_STALENESS_MINUTES = 15;
+
+const QR_SCANNER_ELEMENT_ID = "machine-qr-reader";
+
 const BulkEntry = () => {
   const [selectedPlant, setSelectedPlant] = useState("A");
   const [selectedMachine, setSelectedMachine] = useState("");
@@ -21,6 +29,84 @@ const BulkEntry = () => {
   const [photoBase64, setPhotoBase64] = useState(null);
   const [technician, setTechnician] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // --- QR verification state ---
+  const [qrVerified, setQrVerified] = useState(false);
+  const [qrScanTimestamp, setQrScanTimestamp] = useState(null);
+  const [scannerActive, setScannerActive] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const [manualOverride, setManualOverride] = useState(false);
+  const [manualReason, setManualReason] = useState("");
+  const html5QrRef = useRef(null);
+
+  const startScanner = async () => {
+    setScanError("");
+    setScannerActive(true);
+    // Give the DOM a tick to render the scanner container before attaching
+    setTimeout(async () => {
+      try {
+        const qr = new Html5Qrcode(QR_SCANNER_ELEMENT_ID);
+        html5QrRef.current = qr;
+        await qr.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decodedText) => handleScanSuccess(decodedText),
+          () => { /* per-frame scan miss, ignore */ }
+        );
+      } catch (err) {
+        console.error("Scanner start error:", err);
+        setScanError("Could not access camera. Check camera permission, or use Manual Entry below.");
+        setScannerActive(false);
+      }
+    }, 150);
+  };
+
+  const stopScanner = async () => {
+    if (html5QrRef.current) {
+      try {
+        await html5QrRef.current.stop();
+        html5QrRef.current.clear();
+      } catch (err) {
+        // scanner may already be stopped
+      }
+      html5QrRef.current = null;
+    }
+    setScannerActive(false);
+  };
+
+  const handleScanSuccess = async (decodedText) => {
+    try {
+      const data = JSON.parse(decodedText);
+      if (!data.plant || !data.machine || !PLANT_CONFIG[data.plant]?.includes(data.machine)) {
+        setScanError("QR code not recognized as a valid machine panel.");
+        return;
+      }
+      await stopScanner();
+      setSelectedPlant(data.plant);
+      setSelectedMachine(data.machine);
+      setQrVerified(true);
+      setQrScanTimestamp(new Date().toISOString());
+      setManualOverride(false);
+      setManualReason("");
+      setScanError("");
+    } catch (e) {
+      setScanError("Unrecognized QR code. Make sure you're scanning the machine panel label.");
+    }
+  };
+
+  const resetVerification = async () => {
+    await stopScanner();
+    setQrVerified(false);
+    setQrScanTimestamp(null);
+    setSelectedMachine("");
+    setMachineConfig(null);
+    setManualOverride(false);
+    setManualReason("");
+  };
+
+  useEffect(() => {
+    return () => { if (html5QrRef.current) { html5QrRef.current.stop().catch(() => {}); } };
+  }, []);
 
   useEffect(() => {
     if (selectedPlant && selectedMachine) {
@@ -103,6 +189,23 @@ const BulkEntry = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Require either a fresh QR scan or an explicit manual override reason.
+    // A scan older than QR_STALENESS_MINUTES can't be reused for a new visit.
+    const scanAgeMinutes = qrScanTimestamp
+      ? (Date.now() - new Date(qrScanTimestamp).getTime()) / 60000
+      : Infinity;
+    const scanStillFresh = qrVerified && scanAgeMinutes <= QR_STALENESS_MINUTES;
+
+    if (!scanStillFresh && !manualOverride) {
+      alert("⚠️ Please scan the machine panel's QR code, or use Manual Entry and give a reason.");
+      return;
+    }
+    if (!scanStillFresh && manualOverride && !manualReason.trim()) {
+      alert("⚠️ Please give a reason for skipping the QR scan (e.g. label damaged/missing).");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -115,7 +218,10 @@ const BulkEntry = () => {
         })),
         technician,
         photo_base64: photoBase64,
-        entry_source: "Field"
+        entry_source: "Field",
+        qr_verified: scanStillFresh,
+        qr_scan_timestamp: scanStillFresh ? qrScanTimestamp : "",
+        manual_override_reason: scanStillFresh ? "" : manualReason.trim()
       };
 
       await axios.post(`${API}/condition-monitoring/bulk`, bulkData);
@@ -128,6 +234,10 @@ const BulkEntry = () => {
       setPhotoPreview(null);
       setPhotoBase64(null);
       setTechnician("");
+      setQrVerified(false);
+      setQrScanTimestamp(null);
+      setManualOverride(false);
+      setManualReason("");
 
     } catch (error) {
       console.error("Bulk submit error:", error);
@@ -149,42 +259,90 @@ const BulkEntry = () => {
       </div>
 
       <div className="border border-zinc-200 bg-white p-6 mb-6">
-        <h3 className="text-lg font-medium tracking-tight text-zinc-900 mb-4">Select Machine</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">
-              Plant *
-            </label>
-            <select
-              value={selectedPlant}
-              onChange={(e) => {
-                setSelectedPlant(e.target.value);
-                setSelectedMachine("");
-                setMachineConfig(null);
-              }}
-              className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
-            >
-              {Object.keys(PLANT_CONFIG).map(p => (
-                <option key={p} value={p}>Plant {p}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">
-              Machine *
-            </label>
-            <select
-              value={selectedMachine}
-              onChange={(e) => setSelectedMachine(e.target.value)}
-              className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
-            >
-              <option value="">Select Machine</option>
-              {PLANT_CONFIG[selectedPlant]?.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium tracking-tight text-zinc-900">Step 1 — Verify You're at the Machine</h3>
+          {qrVerified && (
+            <span className="flex items-center gap-1 text-xs font-medium text-[#16A34A]">
+              <LockSimple size={14} weight="bold" /> Verified: {selectedPlant} - {selectedMachine}
+            </span>
+          )}
         </div>
+
+        {!qrVerified && !manualOverride && (
+          <>
+            <p className="text-sm text-zinc-600 mb-4">
+              Scan the QR code on the machine panel to unlock entry for that machine.
+            </p>
+            {!scannerActive ? (
+              <button type="button" onClick={startScanner} className="flex items-center gap-2 bg-[#002FA7] text-white px-6 py-3 text-sm font-medium hover:bg-[#002FA7]/90 rounded-none">
+                <QrCode size={18} weight="bold" /> Scan Machine QR Code
+              </button>
+            ) : (
+              <div>
+                <div id={QR_SCANNER_ELEMENT_ID} className="w-full max-w-sm border-2 border-[#002FA7]" />
+                <button type="button" onClick={stopScanner} className="mt-3 text-sm text-zinc-600 underline">
+                  Cancel scan
+                </button>
+              </div>
+            )}
+            {scanError && <p className="text-sm text-[#E11D48] mt-3">{scanError}</p>}
+            <button
+              type="button"
+              onClick={() => { setManualOverride(true); setScanError(""); }}
+              className="block mt-4 text-xs text-zinc-500 underline"
+            >
+              QR label missing or damaged? Manual entry (flagged for review)
+            </button>
+          </>
+        )}
+
+        {!qrVerified && manualOverride && (
+          <div>
+            <div className="flex items-center gap-2 mb-3 text-xs text-[#E11D48] font-medium">
+              <LockSimpleOpen size={14} weight="bold" /> Manual entry — this submission will be flagged for supervisor review
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Plant *</label>
+                <select
+                  value={selectedPlant}
+                  onChange={(e) => { setSelectedPlant(e.target.value); setSelectedMachine(""); setMachineConfig(null); }}
+                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+                >
+                  {Object.keys(PLANT_CONFIG).map(p => <option key={p} value={p}>Plant {p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Machine *</label>
+                <select
+                  value={selectedMachine}
+                  onChange={(e) => setSelectedMachine(e.target.value)}
+                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+                >
+                  <option value="">Select Machine</option>
+                  {PLANT_CONFIG[selectedPlant]?.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+            <label className="text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-2 block">Reason for skipping QR scan *</label>
+            <input
+              type="text"
+              value={manualReason}
+              onChange={(e) => setManualReason(e.target.value)}
+              placeholder="e.g. QR label damaged, needs replacement"
+              className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 focus:outline-none focus:ring-2 focus:ring-[#002FA7] focus:ring-offset-2 rounded-none"
+            />
+            <button type="button" onClick={() => { setManualOverride(false); setManualReason(""); }} className="block mt-3 text-xs text-zinc-500 underline">
+              Cancel — try scanning instead
+            </button>
+          </div>
+        )}
+
+        {qrVerified && (
+          <button type="button" onClick={resetVerification} className="mt-2 text-xs text-zinc-500 underline">
+            Wrong machine? Re-scan
+          </button>
+        )}
       </div>
 
       {machineConfig && (
