@@ -185,6 +185,15 @@ def add_timestamp_watermark(photo_base64: str) -> str:
             photo_base64.split(',')[1] if ',' in photo_base64 else photo_base64
         )
         image = Image.open(BytesIO(image_data))
+        # Safety net: if a client ever sends a full-resolution photo (bypassed
+        # frontend compression, old cached app version, etc.), this tells the
+        # JPEG decoder to downscale WHILE decoding rather than after, capping
+        # peak memory use regardless of source image size. No-op for smaller images.
+        try:
+            image.draft('RGB', (800, 800))
+        except Exception:
+            pass
+        image.load()
         if image.mode != 'RGB':
             image = image.convert('RGB')
         max_width = 800
