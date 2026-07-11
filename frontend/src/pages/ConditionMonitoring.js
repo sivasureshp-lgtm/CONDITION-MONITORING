@@ -115,14 +115,35 @@ const ConditionMonitoring = () => {
 
   const handlePhotoCapture = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, photo_base64: reader.result });
-        setPhotoPreview(reader.result);
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize so the longest side is at most 1200px, then compress to JPEG.
+        // This cuts a typical 4000x3000 phone photo (5-8MB) down to ~150-300KB
+        // before it ever reaches the server, preventing memory spikes on Render.
+        const MAX_DIM = 1200;
+        let { width, height } = img;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        setFormData({ ...formData, photo_base64: compressed });
+        setPhotoPreview(compressed);
       };
-      reader.readAsDataURL(file);
-    }
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
   };
 
   const removePhoto = () => {
