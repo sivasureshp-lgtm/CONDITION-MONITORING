@@ -287,7 +287,9 @@ def save_bulk_readings_to_sheets(readings_list: list):
                 str(r.get('normal_i2t', '')), str(r.get('warning_i2t', '')),
                 r.get('status', ''), r.get('verified_by', ''), r.get('entry_source', ''),
                 'Yes' if r.get('has_photo') else 'No', r.get('photo_url', ''),
-                'Yes' if r.get('bulk_entry') else 'No'
+                'Yes' if r.get('bulk_entry') else 'No',
+                'Yes' if r.get('qr_verified') else 'No',
+                r.get('manual_override_reason', '')
             ])
         readings_sheet.append_rows(rows, value_input_option='USER_ENTERED')
         logging.info(f"✅ Saved {len(rows)} readings to Google Sheets")
@@ -517,6 +519,29 @@ async def add_bulk_condition_data(data: dict):
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         photo_url = ""
         has_photo = False
+
+        # --- QR machine-presence verification (defense-in-depth) ---
+        # The frontend already enforces this, but re-check here in case the
+        # API is called directly, bypassing the UI's scan requirement.
+        qr_verified_claim = bool(data.get("qr_verified"))
+        qr_scan_timestamp = data.get("qr_scan_timestamp") or ""
+        manual_override_reason = (data.get("manual_override_reason") or "").strip()
+        qr_verified = False
+        if qr_verified_claim and qr_scan_timestamp:
+            try:
+                scan_dt = datetime.fromisoformat(qr_scan_timestamp.replace("Z", "+00:00"))
+                if scan_dt.tzinfo is None:
+                    scan_dt = IST.localize(scan_dt) if hasattr(IST, "localize") else scan_dt.replace(tzinfo=IST)
+                age_minutes = (timestamp - scan_dt.astimezone(IST)).total_seconds() / 60
+                qr_verified = 0 <= age_minutes <= 15
+            except Exception as e:
+                logging.warning(f"QR scan timestamp parse error: {e}")
+                qr_verified = False
+        if not qr_verified and not manual_override_reason:
+            raise HTTPException(
+                status_code=400,
+                detail="Machine QR verification missing or expired. Please re-scan the machine panel, or use Manual Entry with a reason."
+            )
         if photo_base64:
             watermarked = add_timestamp_watermark(photo_base64)
             photo_url = upload_photo_to_cloudinary(watermarked, plant, machine)
@@ -558,7 +583,9 @@ async def add_bulk_condition_data(data: dict):
                 "warning_i2t": float(reading.get("warning_i2t")) if reading.get("warning_i2t") else "",
                 "status": status, "verified_by": technician or "",
                 "entry_source": entry_source, "has_photo": has_photo,
-                "photo_url": photo_url, "bulk_entry": True
+                "photo_url": photo_url, "bulk_entry": True,
+                "qr_verified": qr_verified,
+                "manual_override_reason": manual_override_reason if not qr_verified else ""
             }
             docs_for_sheets.append(doc)
             readings_cache.append(doc)
