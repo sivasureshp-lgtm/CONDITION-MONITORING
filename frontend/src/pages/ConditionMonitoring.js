@@ -92,15 +92,19 @@ const ConditionMonitoring = () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API}/condition-monitoring/machine/${plant}/${machine}`);
+      // Show date+time so readings from different days are distinguishable
       const transformed = res.data.map(item => ({
-        time: new Date(item.timestamp).toLocaleTimeString(),
-        current: item.current,
+        time: new Date(item.timestamp).toLocaleDateString('en-IN', {day:'2-digit',month:'short'})
+          + ' ' + new Date(item.timestamp).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',hour12:false}),
+        current: typeof item.current === 'number' ? item.current : parseFloat(item.current) || null,
+        temperature: typeof item.temperature === 'number' ? item.temperature : parseFloat(item.temperature) || null,
+        i2t: typeof item.i2t === 'number' ? item.i2t : parseFloat(item.i2t) || null,
         normal: item.normal_current,
         warning: item.warning_current,
         motor: item.motor,
         status: item.status,
-        photo: item.photo,
-        has_photo: item.has_photo,
+        photo: item.photo_url || item.photo || null,
+        has_photo: item.has_photo || !!item.photo_url,
         verified: item.verified,
         entry_source: item.entry_source
       }));
@@ -580,18 +584,23 @@ const ConditionMonitoring = () => {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <ReferenceLine 
-                      y={chartData[0]?.normal} 
-                      stroke="#16A34A" 
-                      strokeDasharray="5 5" 
-                      label={{ value: 'Normal', position: 'right', fontSize: 10 }}
-                    />
-                    <ReferenceLine 
-                      y={chartData[0]?.warning} 
-                      stroke="#E11D48" 
-                      strokeDasharray="5 5" 
-                      label={{ value: 'Warning', position: 'right', fontSize: 10 }}
-                    />
+                    {/* Use limits from most recent reading (data sorted newest-first) */}
+                    {chartData[chartData.length - 1]?.normal && (
+                      <ReferenceLine 
+                        y={chartData[chartData.length - 1].normal} 
+                        stroke="#16A34A" 
+                        strokeDasharray="5 5" 
+                        label={{ value: `Normal (${chartData[chartData.length-1].normal}A)`, position: 'right', fontSize: 10 }}
+                      />
+                    )}
+                    {chartData[chartData.length - 1]?.warning && (
+                      <ReferenceLine 
+                        y={chartData[chartData.length - 1].warning} 
+                        stroke="#E11D48" 
+                        strokeDasharray="5 5" 
+                        label={{ value: `Warning (${chartData[chartData.length-1].warning}A)`, position: 'right', fontSize: 10 }}
+                      />
+                    )}
                     <Line 
                       type="monotone" 
                       dataKey="current" 
