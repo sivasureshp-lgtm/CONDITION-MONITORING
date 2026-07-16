@@ -116,18 +116,29 @@ init_google_sheets()
 
 # ============================================================
 # CLOUDINARY SETUP (Photo Storage)
+# Supports two config styles:
+#   Style A (combined): CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
+#   Style B (separate): CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
 # ============================================================
 CLOUDINARY_ENABLED = False
 try:
+    import cloudinary
+    import cloudinary.uploader
     cloudinary_url = os.environ.get('CLOUDINARY_URL', '')
+    cloud_name     = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+    api_key        = os.environ.get('CLOUDINARY_API_KEY', '')
+    api_secret     = os.environ.get('CLOUDINARY_API_SECRET', '')
     if cloudinary_url:
-        import cloudinary
-        import cloudinary.uploader
         cloudinary.config(cloudinary_url=cloudinary_url)
         CLOUDINARY_ENABLED = True
-        logging.info("✅ Cloudinary connected for photo storage")
+        logging.info("✅ Cloudinary connected via CLOUDINARY_URL")
+    elif cloud_name and api_key and api_secret:
+        cloudinary.config(cloud_name=cloud_name, api_key=api_key,
+                          api_secret=api_secret, secure=True)
+        CLOUDINARY_ENABLED = True
+        logging.info(f"✅ Cloudinary connected via separate keys: {cloud_name}")
     else:
-        logging.warning("⚠️ CLOUDINARY_URL not set. Photos will not be stored.")
+        logging.warning("⚠️ No Cloudinary credentials found. Photos will not be stored.")
 except Exception as e:
     logging.error(f"Cloudinary setup error: {e}")
 
