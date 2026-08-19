@@ -648,10 +648,33 @@ async def get_plant_data(plant: str, limit: int = 1000):
     return data[:limit]
 
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
-async def get_machine_data(plant: str, machine: str, limit: int = 100):
-    if not cache_loaded:
-        await load_cache_from_sheets()
-    data = [r for r in readings_cache if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+async def get_machine_data(plant: str, machine: str, limit: int = 500):
+    """
+    Returns full history for one machine.
+
+    NOTE: readings_cache only holds the most recent MAX_CACHE_SIZE (500) readings
+    across ALL plants/machines/motors combined, so filtering it for a single
+    machine silently drops older readings once the plant-wide reading count
+    passes ~500. To show complete history, read directly from the Google Sheet
+    for this specific plant+machine instead of relying on that shared cache.
+    """
+    if not config_ready or not readings_sheet:
+        # Fallback to cache if Sheets isn't configured (e.g. local/dev)
+        if not cache_loaded:
+            await load_cache_from_sheets()
+        data = [r for r in readings_cache if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+    else:
+        try:
+            all_data = readings_sheet.get_all_records()
+        except Exception as e:
+            logging.error(f"Sheet read error in get_machine_data: {e}")
+            if not cache_loaded:
+                await load_cache_from_sheets()
+            all_data = readings_cache
+        data = [r for r in all_data if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+        for r in data:
+            r.pop("photo_base64", None)
+
     data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
     return data[:limit]
 
