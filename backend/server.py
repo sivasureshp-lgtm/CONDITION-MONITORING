@@ -668,6 +668,8 @@ async def get_plant_data(plant: str, limit: int = 1000):
 # (~hundreds of rows), not the whole sheet, no matter how large the
 # sheet grows.
 # ============================================================
+# SHEET_HEADERS: the actual column headers/order in the Google Sheet
+# (capitalized, e.g. "Timestamp", "Normal_Current").
 SHEET_HEADERS = [
     "ID", "Timestamp", "Plant", "Machine", "Motor",
     "Current", "Temperature", "I2t",
@@ -676,6 +678,21 @@ SHEET_HEADERS = [
     "Normal_I2t", "Warning_I2t",
     "Status", "Verified_By", "Entry_Source",
     "Has_Photo", "Photo_URL", "Bulk_Entry"
+]
+
+# FIELD_KEYS: the lowercase keys the frontend (ConditionMonitoring.js)
+# actually reads, e.g. item.timestamp, item.current, item.normal_current.
+# Same order as SHEET_HEADERS above - this is what was missing before,
+# which is why every field showed up blank ("Invalid Date", etc.) even
+# though the row count (66 readings) was correct.
+FIELD_KEYS = [
+    "id", "timestamp", "plant", "machine", "motor",
+    "current", "temperature", "i2t",
+    "normal_current", "warning_current",
+    "normal_temperature", "warning_temperature",
+    "normal_i2t", "warning_i2t",
+    "status", "verified_by", "entry_source",
+    "has_photo", "photo_url", "bulk_entry"
 ]
 
 _plant_machine_index_cache = {"data": None, "ts": 0.0}
@@ -707,7 +724,12 @@ def _rows_to_dicts(row_blocks):
         if not block:
             continue
         row_vals = block[0]
-        d = {SHEET_HEADERS[i]: (row_vals[i] if i < len(row_vals) else "") for i in range(len(SHEET_HEADERS))}
+        d = {}
+        for i, key in enumerate(FIELD_KEYS):
+            val = row_vals[i] if i < len(row_vals) else ""
+            if key == "has_photo" or key == "bulk_entry":
+                val = (val == "Yes")  # sheet stores these as "Yes"/"No" text
+            d[key] = val
         data.append(d)
     return data
 
