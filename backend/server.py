@@ -718,6 +718,32 @@ async def get_plant_machine_index():
     return idx
 
 
+@api_router.get("/debug/plant-machines")
+async def debug_plant_machines(plant: str = "K"):
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT.
+    Shows exactly what the index scan sees for a given plant, including
+    the raw repr() of each machine value (reveals hidden whitespace or
+    invisible characters that wouldn't show up in the Sheets UI), plus
+    the row numbers and total index size, so we can pinpoint exactly
+    why a specific machine isn't matching.
+    """
+    if not config_ready or not readings_sheet:
+        return {"error": "Sheets not connected"}
+    idx = await get_plant_machine_index()
+    total_rows = len(idx)
+    last_5_overall = idx[-5:] if idx else []
+    matches_for_plant = [(p, m, r) for (p, m, r) in idx if p == plant]
+    unique_machines = sorted(set(m for (p, m, r) in idx if p == plant))
+    return {
+        "total_indexed_rows": total_rows,
+        "last_5_rows_in_index_overall": [{"plant": repr(p), "machine": repr(m), "row": r} for (p, m, r) in last_5_overall],
+        "unique_machines_for_plant": [repr(m) for m in unique_machines],
+        "matching_rows_for_plant": len(matches_for_plant),
+        "sample_matches": [{"plant": repr(p), "machine": repr(m), "row": r} for (p, m, r) in matches_for_plant[:5]],
+    }
+
+
 def _rows_to_dicts(row_blocks):
     data = []
     for block in row_blocks:
