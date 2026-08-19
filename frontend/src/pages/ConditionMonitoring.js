@@ -604,11 +604,12 @@ const ConditionMonitoring = () => {
                     <Line 
                       type="monotone" 
                       dataKey="current" 
-                      stroke="#002FA7" 
-                      strokeWidth={2}
-                      dot={{ fill: '#002FA7', r: 4 }}
-                      activeDot={{ r: 6 }}
+                      stroke="none"
+                      strokeWidth={0}
+                      dot={{ fill: '#002FA7', r: 5 }}
+                      activeDot={{ r: 7 }}
                       name="Current (A)"
+                      isAnimationActive={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
