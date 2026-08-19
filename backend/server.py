@@ -744,6 +744,64 @@ async def debug_plant_machines(plant: str = "K"):
     }
 
 
+@api_router.get("/debug/machine-fetch")
+async def debug_machine_fetch(plant: str, machine: str, limit: int = 500):
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT.
+    Walks through the exact same steps get_machine_data uses, but reports
+    back what happens at EACH stage (row count found, ranges built, rows
+    actually returned by batch_get) plus the full exception message/type
+    if anything fails - instead of silently falling back like the real
+    endpoint does. This is how we see errors without needing Render logs.
+    """
+    if not config_ready or not readings_sheet:
+        return {"error": "Sheets not connected"}
+
+    idx = await get_plant_machine_index()
+    matching_rows = [row_num for (p, m, row_num) in idx if p == plant and m == machine]
+    result = {"matching_rows_found": len(matching_rows)}
+    if not matching_rows:
+        result["note"] = "No rows matched this plant+machine in the index."
+        return result
+
+    if len(matching_rows) > limit:
+        matching_rows = matching_rows[-limit:]
+    result["rows_after_limit"] = len(matching_rows)
+    result["first_few_row_numbers"] = matching_rows[:5]
+    result["last_few_row_numbers"] = matching_rows[-5:]
+
+    ranges_bounds = []
+    start = prev = matching_rows[0]
+    for r in matching_rows[1:]:
+        if r == prev + 1:
+            prev = r
+            continue
+        ranges_bounds.append((start, prev))
+        start = prev = r
+    ranges_bounds.append((start, prev))
+    result["num_merged_ranges"] = len(ranges_bounds)
+    result["sample_ranges"] = [f"A{s}:T{e}" for (s, e) in ranges_bounds[:5]]
+
+    try:
+        CHUNK = 40
+        total_rows_fetched = 0
+        for i in range(0, len(ranges_bounds), CHUNK):
+            chunk = ranges_bounds[i:i + CHUNK]
+            ranges = [f"A{s}:T{e}" for (s, e) in chunk]
+            batch_results = readings_sheet.batch_get(ranges)
+            for block in batch_results:
+                if block:
+                    total_rows_fetched += len(block)
+        result["total_rows_fetched_successfully"] = total_rows_fetched
+        result["status"] = "SUCCESS"
+    except Exception as e:
+        result["status"] = "FAILED"
+        result["error_type"] = type(e).__name__
+        result["error_message"] = str(e)
+
+    return result
+
+
 def _rows_to_dicts(row_blocks):
     """row_blocks: list of blocks from batch_get. Each block can now contain
     MULTIPLE rows (since we merge consecutive row numbers into one range),
