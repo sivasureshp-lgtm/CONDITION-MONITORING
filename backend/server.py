@@ -604,7 +604,7 @@ async def add_bulk_condition_data(data: dict):
         sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
         if len(readings_cache) > MAX_CACHE_SIZE:
             del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
-        _full_sheet_cache["data"] = None  # force history to refresh with these new readings
+        _plant_machine_index_cache["data"] = None  # force index to refresh with these new readings
         return {"message": "Bulk readings submitted successfully", "inserted_count": inserted_count, "alarm_count": alarm_count, "warning_count": warning_count, "sheets_synced": sheets_synced}
     except Exception as e:
         logging.error(f"Bulk entry error: {e}")
@@ -638,7 +638,7 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     readings_cache.append(doc)
     if len(readings_cache) > MAX_CACHE_SIZE:
         del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
-    _full_sheet_cache["data"] = None  # force history to refresh with this new reading
+    _plant_machine_index_cache["data"] = None  # force index to refresh with this new reading
     return {"message": "Data added successfully", "status": status, "has_photo": has_photo}
 
 @api_router.get("/condition-monitoring/plant/{plant}")
@@ -651,62 +651,104 @@ async def get_plant_data(plant: str, limit: int = 1000):
 
 
 # ============================================================
-# SHORT-LIVED FULL-SHEET CACHE (for history views)
+# TARGETED PER-MACHINE HISTORY FETCH (memory-safe)
 # ------------------------------------------------------------
-# The history endpoint needs the COMPLETE sheet (not the rolling
-# 500-row readings_cache used by bulk-write/dashboard flows), but
-# re-reading the whole Google Sheet on every single click can burn
-# through Google Sheets API read quota (~60 reads/min/user) and is
-# also slow on a large sheet -> Render free tier requests can be
-# slow/fail -> chart shows nothing.
+# With 37,000+ rows in the Readings sheet, pulling the ENTIRE sheet
+# into memory (get_all_records()) on every history view is what was
+# crashing the backend on Render's 512MB free tier.
 #
-# Fix: cache the full sheet in memory for FULL_SHEET_CACHE_TTL
-# seconds. Repeated clicks within that window reuse the same data
-# (fast, no extra API calls). If a refresh ever fails, we serve the
-# last good copy instead of returning nothing.
+# Instead:
+#   1. Read a lightweight index of just the Plant (col C) and
+#      Machine (col D) columns for every row - this is a small,
+#      cheap read (2 columns of text, not 20+ columns of full data).
+#   2. Find which row numbers belong to the requested plant+machine.
+#   3. Fetch ONLY those specific rows' full data in one batched call
+#      (chunked to stay under safe request-size limits).
+# This keeps memory usage proportional to one machine's history
+# (~hundreds of rows), not the whole sheet, no matter how large the
+# sheet grows.
 # ============================================================
-_full_sheet_cache = {"data": None, "ts": 0.0}
-FULL_SHEET_CACHE_TTL = 20  # seconds
+SHEET_HEADERS = [
+    "ID", "Timestamp", "Plant", "Machine", "Motor",
+    "Current", "Temperature", "I2t",
+    "Normal_Current", "Warning_Current",
+    "Normal_Temperature", "Warning_Temperature",
+    "Normal_I2t", "Warning_I2t",
+    "Status", "Verified_By", "Entry_Source",
+    "Has_Photo", "Photo_URL", "Bulk_Entry"
+]
 
-async def get_full_sheet_data():
-    global _full_sheet_cache
+_plant_machine_index_cache = {"data": None, "ts": 0.0}
+INDEX_CACHE_TTL = 30  # seconds
+
+async def get_plant_machine_index():
+    """Lightweight (Plant, Machine, row_number) index, cached briefly."""
+    global _plant_machine_index_cache
     now = datetime.now(IST).timestamp()
+    if _plant_machine_index_cache["data"] is not None and (now - _plant_machine_index_cache["ts"]) < INDEX_CACHE_TTL:
+        return _plant_machine_index_cache["data"]
 
-    if _full_sheet_cache["data"] is not None and (now - _full_sheet_cache["ts"]) < FULL_SHEET_CACHE_TTL:
-        return _full_sheet_cache["data"]
+    values = readings_sheet.get('C2:D')  # Plant, Machine only, skip header row
+    idx = []
+    for i, row in enumerate(values):
+        row_num = i + 2  # +2: 1-indexed sheet rows, plus header row
+        plant_v = row[0] if len(row) > 0 else ""
+        machine_v = row[1] if len(row) > 1 else ""
+        if plant_v or machine_v:
+            idx.append((plant_v, machine_v, row_num))
+    _plant_machine_index_cache = {"data": idx, "ts": now}
+    logging.info(f"✅ Refreshed plant/machine index: {len(idx)} rows indexed")
+    return idx
 
-    if not config_ready or not readings_sheet:
-        if not cache_loaded:
-            await load_cache_from_sheets()
-        return readings_cache
 
-    try:
-        all_data = readings_sheet.get_all_records()
-        for r in all_data:
-            r.pop("photo_base64", None)
-        _full_sheet_cache = {"data": all_data, "ts": now}
-        logging.info(f"✅ Refreshed full-sheet history cache: {len(all_data)} total readings")
-        return all_data
-    except Exception as e:
-        logging.error(f"Sheet read error in get_full_sheet_data: {e}")
-        if _full_sheet_cache["data"] is not None:
-            # Serve stale-but-real data rather than nothing
-            logging.warning("Serving stale full-sheet cache after read error")
-            return _full_sheet_cache["data"]
-        if not cache_loaded:
-            await load_cache_from_sheets()
-        return readings_cache
+def _rows_to_dicts(row_blocks):
+    data = []
+    for block in row_blocks:
+        if not block:
+            continue
+        row_vals = block[0]
+        d = {SHEET_HEADERS[i]: (row_vals[i] if i < len(row_vals) else "") for i in range(len(SHEET_HEADERS))}
+        data.append(d)
+    return data
+
+
+async def get_machine_history_targeted(plant: str, machine: str):
+    """Returns full history for one machine without loading the whole sheet."""
+    idx = await get_plant_machine_index()
+    matching_rows = [row_num for (p, m, row_num) in idx if p == plant and m == machine]
+    if not matching_rows:
+        return []
+
+    CHUNK = 40  # keep each batch_get request comfortably sized
+    data = []
+    for i in range(0, len(matching_rows), CHUNK):
+        chunk_rows = matching_rows[i:i + CHUNK]
+        ranges = [f"A{r}:T{r}" for r in chunk_rows]
+        results = readings_sheet.batch_get(ranges)
+        data.extend(_rows_to_dicts(results))
+    return data
 
 
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
-async def get_machine_data(plant: str, machine: str, limit: int = 500):
+async def get_machine_data(plant: str, machine: str, limit: int = 2000):
     """
-    Returns full history for one machine, backed by the short-lived
-    full-sheet cache above (NOT the 500-row global readings_cache,
-    which is too small to hold history once you're past ~270 motors).
+    Returns full history for one machine, reading only that machine's
+    rows from the sheet (see get_machine_history_targeted) instead of
+    the whole ~37k-row sheet or the 500-row global readings_cache.
     """
-    all_data = await get_full_sheet_data()
-    data = [r for r in all_data if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+    if config_ready and readings_sheet:
+        try:
+            data = await get_machine_history_targeted(plant, machine)
+        except Exception as e:
+            logging.error(f"Targeted history fetch error for {plant}/{machine}: {e}")
+            if not cache_loaded:
+                await load_cache_from_sheets()
+            data = [r for r in readings_cache if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+    else:
+        if not cache_loaded:
+            await load_cache_from_sheets()
+        data = [r for r in readings_cache if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
+
     data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
     return data[:limit]
 
