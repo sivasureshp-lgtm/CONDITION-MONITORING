@@ -604,6 +604,7 @@ async def add_bulk_condition_data(data: dict):
         sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
         if len(readings_cache) > MAX_CACHE_SIZE:
             del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
+        _full_sheet_cache["data"] = None  # force history to refresh with these new readings
         return {"message": "Bulk readings submitted successfully", "inserted_count": inserted_count, "alarm_count": alarm_count, "warning_count": warning_count, "sheets_synced": sheets_synced}
     except Exception as e:
         logging.error(f"Bulk entry error: {e}")
@@ -637,6 +638,7 @@ async def add_condition_data(data: ConditionMonitoringCreate):
     readings_cache.append(doc)
     if len(readings_cache) > MAX_CACHE_SIZE:
         del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
+    _full_sheet_cache["data"] = None  # force history to refresh with this new reading
     return {"message": "Data added successfully", "status": status, "has_photo": has_photo}
 
 @api_router.get("/condition-monitoring/plant/{plant}")
@@ -647,34 +649,64 @@ async def get_plant_data(plant: str, limit: int = 1000):
     data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
     return data[:limit]
 
+
+# ============================================================
+# SHORT-LIVED FULL-SHEET CACHE (for history views)
+# ------------------------------------------------------------
+# The history endpoint needs the COMPLETE sheet (not the rolling
+# 500-row readings_cache used by bulk-write/dashboard flows), but
+# re-reading the whole Google Sheet on every single click can burn
+# through Google Sheets API read quota (~60 reads/min/user) and is
+# also slow on a large sheet -> Render free tier requests can be
+# slow/fail -> chart shows nothing.
+#
+# Fix: cache the full sheet in memory for FULL_SHEET_CACHE_TTL
+# seconds. Repeated clicks within that window reuse the same data
+# (fast, no extra API calls). If a refresh ever fails, we serve the
+# last good copy instead of returning nothing.
+# ============================================================
+_full_sheet_cache = {"data": None, "ts": 0.0}
+FULL_SHEET_CACHE_TTL = 20  # seconds
+
+async def get_full_sheet_data():
+    global _full_sheet_cache
+    now = datetime.now(IST).timestamp()
+
+    if _full_sheet_cache["data"] is not None and (now - _full_sheet_cache["ts"]) < FULL_SHEET_CACHE_TTL:
+        return _full_sheet_cache["data"]
+
+    if not config_ready or not readings_sheet:
+        if not cache_loaded:
+            await load_cache_from_sheets()
+        return readings_cache
+
+    try:
+        all_data = readings_sheet.get_all_records()
+        for r in all_data:
+            r.pop("photo_base64", None)
+        _full_sheet_cache = {"data": all_data, "ts": now}
+        logging.info(f"✅ Refreshed full-sheet history cache: {len(all_data)} total readings")
+        return all_data
+    except Exception as e:
+        logging.error(f"Sheet read error in get_full_sheet_data: {e}")
+        if _full_sheet_cache["data"] is not None:
+            # Serve stale-but-real data rather than nothing
+            logging.warning("Serving stale full-sheet cache after read error")
+            return _full_sheet_cache["data"]
+        if not cache_loaded:
+            await load_cache_from_sheets()
+        return readings_cache
+
+
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
 async def get_machine_data(plant: str, machine: str, limit: int = 500):
     """
-    Returns full history for one machine.
-
-    NOTE: readings_cache only holds the most recent MAX_CACHE_SIZE (500) readings
-    across ALL plants/machines/motors combined, so filtering it for a single
-    machine silently drops older readings once the plant-wide reading count
-    passes ~500. To show complete history, read directly from the Google Sheet
-    for this specific plant+machine instead of relying on that shared cache.
+    Returns full history for one machine, backed by the short-lived
+    full-sheet cache above (NOT the 500-row global readings_cache,
+    which is too small to hold history once you're past ~270 motors).
     """
-    if not config_ready or not readings_sheet:
-        # Fallback to cache if Sheets isn't configured (e.g. local/dev)
-        if not cache_loaded:
-            await load_cache_from_sheets()
-        data = [r for r in readings_cache if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
-    else:
-        try:
-            all_data = readings_sheet.get_all_records()
-        except Exception as e:
-            logging.error(f"Sheet read error in get_machine_data: {e}")
-            if not cache_loaded:
-                await load_cache_from_sheets()
-            all_data = readings_cache
-        data = [r for r in all_data if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
-        for r in data:
-            r.pop("photo_base64", None)
-
+    all_data = await get_full_sheet_data()
+    data = [r for r in all_data if (r.get("Plant", r.get("plant", "")) == plant and r.get("Machine", r.get("machine", "")) == machine)]
     data.sort(key=lambda x: x.get("Timestamp", x.get("timestamp", "")), reverse=True)
     return data[:limit]
 
