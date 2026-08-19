@@ -745,48 +745,78 @@ async def debug_plant_machines(plant: str = "K"):
 
 
 def _rows_to_dicts(row_blocks):
+    """row_blocks: list of blocks from batch_get. Each block can now contain
+    MULTIPLE rows (since we merge consecutive row numbers into one range),
+    so iterate over every row in every block, not just the first."""
     data = []
     for block in row_blocks:
         if not block:
             continue
-        row_vals = block[0]
-        d = {}
-        for i, key in enumerate(FIELD_KEYS):
-            val = row_vals[i] if i < len(row_vals) else ""
-            if key == "has_photo" or key == "bulk_entry":
-                val = (val == "Yes")  # sheet stores these as "Yes"/"No" text
-            d[key] = val
-        data.append(d)
+        for row_vals in block:
+            d = {}
+            for i, key in enumerate(FIELD_KEYS):
+                val = row_vals[i] if i < len(row_vals) else ""
+                if key == "has_photo" or key == "bulk_entry":
+                    val = (val == "Yes")  # sheet stores these as "Yes"/"No" text
+                d[key] = val
+            data.append(d)
     return data
 
 
-async def get_machine_history_targeted(plant: str, machine: str):
-    """Returns full history for one machine without loading the whole sheet."""
+async def get_machine_history_targeted(plant: str, machine: str, limit: int = 500):
+    """
+    Returns the most recent `limit` readings for one machine, without
+    loading the whole sheet or issuing one API call per row.
+
+    A machine with thousands of historical readings (e.g. K1 with 3000+)
+    would need 75+ individual batch_get calls if fetched one row at a
+    time - that blows straight through Google's per-minute read quota
+    and the whole request fails. Two fixes:
+      1. Only fetch the most recent `limit` rows (row numbers are already
+         in chronological/append order, so this is just the tail).
+      2. Merge consecutive row numbers into single ranges - bulk-entry
+         writes consecutive rows per machine, so e.g. 20 individual rows
+         collapse into ONE range covering all 20, in one API call.
+    """
     idx = await get_plant_machine_index()
     matching_rows = [row_num for (p, m, row_num) in idx if p == plant and m == machine]
     if not matching_rows:
         return []
 
-    CHUNK = 40  # keep each batch_get request comfortably sized
+    if len(matching_rows) > limit:
+        matching_rows = matching_rows[-limit:]  # most recent (tail of the sheet)
+
+    # Merge consecutive row numbers into (start, end) ranges
+    ranges_bounds = []
+    start = prev = matching_rows[0]
+    for r in matching_rows[1:]:
+        if r == prev + 1:
+            prev = r
+            continue
+        ranges_bounds.append((start, prev))
+        start = prev = r
+    ranges_bounds.append((start, prev))
+
+    CHUNK = 40  # ranges per batch_get call (not rows - each range can span many rows now)
     data = []
-    for i in range(0, len(matching_rows), CHUNK):
-        chunk_rows = matching_rows[i:i + CHUNK]
-        ranges = [f"A{r}:T{r}" for r in chunk_rows]
+    for i in range(0, len(ranges_bounds), CHUNK):
+        chunk = ranges_bounds[i:i + CHUNK]
+        ranges = [f"A{s}:T{e}" for (s, e) in chunk]
         results = readings_sheet.batch_get(ranges)
         data.extend(_rows_to_dicts(results))
     return data
 
 
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
-async def get_machine_data(plant: str, machine: str, limit: int = 2000):
+async def get_machine_data(plant: str, machine: str, limit: int = 500):
     """
-    Returns full history for one machine, reading only that machine's
-    rows from the sheet (see get_machine_history_targeted) instead of
-    the whole ~37k-row sheet or the 500-row global readings_cache.
+    Returns the most recent `limit` readings for one machine, reading
+    only that machine's rows from the sheet (see get_machine_history_targeted)
+    instead of the whole ~37k-row sheet or the 500-row global readings_cache.
     """
     if config_ready and readings_sheet:
         try:
-            data = await get_machine_history_targeted(plant, machine)
+            data = await get_machine_history_targeted(plant, machine, limit=limit)
         except Exception as e:
             logging.error(f"Targeted history fetch error for {plant}/{machine}: {e}")
             if not cache_loaded:
