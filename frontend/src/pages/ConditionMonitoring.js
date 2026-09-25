@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Download, Plus, Warning as WarningIcon, XCircle, Camera, Image as ImageIcon } from "@phosphor-icons/react";
@@ -55,6 +55,66 @@ const ConditionMonitoring = () => {
     photo_base64: null
   });
   const [photoPreview, setPhotoPreview] = useState(null);
+
+  // ---- Recent Readings table: motor filter + how many rows to show ----
+  const [motorFilter, setMotorFilter] = useState("ALL");
+  const [rowLimit, setRowLimit] = useState(100); // 0 = show all
+
+  // Reset the motor filter whenever a different machine is opened
+  useEffect(() => {
+    setMotorFilter("ALL");
+  }, [selectedPlant, selectedMachine]);
+
+  // Unique motor list for the dropdown (in the order they appear in the latest round)
+  const motorOptions = useMemo(() => {
+    const seen = [];
+    chartData.forEach((r) => {
+      if (r.motor && !seen.includes(r.motor)) seen.push(r.motor);
+    });
+    return seen;
+  }, [chartData]);
+
+  // Rows after the motor filter (newest first, same order as the API)
+  const filteredRows = useMemo(
+    () => (motorFilter === "ALL" ? chartData : chartData.filter((r) => r.motor === motorFilter)),
+    [chartData, motorFilter]
+  );
+
+  // Rows actually drawn in the table
+  const tableRows = rowLimit === 0 ? filteredRows : filteredRows.slice(0, rowLimit);
+
+  // Chart reads left-to-right as oldest -> newest
+  const trendData = useMemo(() => [...filteredRows].reverse(), [filteredRows]);
+
+  // Only show Temperature / I2t columns when this machine actually has those values
+  const hasTemp = filteredRows.some((r) => r.temperature !== null && r.temperature !== undefined);
+  const hasI2t = filteredRows.some((r) => r.i2t !== null && r.i2t !== undefined);
+
+  // Export the filtered rows as CSV (opens in Excel)
+  const exportCsv = () => {
+    const header = ["Time", "Motor", "Current (A)", "Temperature (C)", "I2t", "Normal (A)", "Warning (A)", "Status", "Source", "Photo URL"];
+    const esc = (v) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [header.join(",")].concat(
+      filteredRows.map((r) =>
+        [r.time, r.motor, r.current, r.temperature, r.i2t, r.normal, r.warning, r.status, r.entry_source, r.photo]
+          .map(esc)
+          .join(",")
+      )
+    );
+    const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const motorPart = motorFilter === "ALL" ? "all-motors" : motorFilter.replace(/\s+/g, "_");
+    a.href = url;
+    a.download = `${selectedPlant}_${selectedMachine}_${motorPart}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     fetchActiveAlarms();
@@ -534,12 +594,18 @@ const ConditionMonitoring = () => {
                   {selectedMachine ? `${selectedPlant} - ${selectedMachine} Motor Current Trend` : 'Select a machine to view data'}
                 </h3>
                 {selectedMachine && (
-                  <p className="text-sm text-zinc-600 mt-1">{chartData.length} readings</p>
+                  <p className="text-sm text-zinc-600 mt-1">
+                    {motorFilter === "ALL"
+                      ? `${chartData.length} readings (all motors)`
+                      : `${filteredRows.length} readings for ${motorFilter}`}
+                  </p>
                 )}
               </div>
               {selectedMachine && chartData.length > 0 && (
                 <button
                   data-testid="export-btn"
+                  onClick={exportCsv}
+                  title="Download the readings shown below as a CSV file (opens in Excel)"
                   className="border border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 px-4 py-2 text-sm font-medium tracking-tight transition-all duration-150 ease-out rounded-none flex items-center space-x-2"
                 >
                   <Download size={16} weight="bold" />
@@ -563,7 +629,7 @@ const ConditionMonitoring = () => {
             ) : (
               <div data-testid="chart-container">
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={chartData}>
+                  <LineChart data={trendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                     <XAxis 
                       dataKey="time" 
@@ -584,29 +650,30 @@ const ConditionMonitoring = () => {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {/* Use limits from most recent reading (data sorted newest-first) */}
-                    {chartData[chartData.length - 1]?.normal && (
-                      <ReferenceLine 
-                        y={chartData[chartData.length - 1].normal} 
-                        stroke="#16A34A" 
-                        strokeDasharray="5 5" 
-                        label={{ value: `Normal (${chartData[chartData.length-1].normal}A)`, position: 'right', fontSize: 10 }}
+                    {/* Limit lines: only meaningful for ONE motor, so show them when a motor is selected */}
+                    {motorFilter !== "ALL" && filteredRows[0]?.normal && (
+                      <ReferenceLine
+                        y={filteredRows[0].normal}
+                        stroke="#16A34A"
+                        strokeDasharray="5 5"
+                        label={{ value: `Normal (${filteredRows[0].normal}A)`, position: 'right', fontSize: 10 }}
                       />
                     )}
-                    {chartData[chartData.length - 1]?.warning && (
-                      <ReferenceLine 
-                        y={chartData[chartData.length - 1].warning} 
-                        stroke="#E11D48" 
-                        strokeDasharray="5 5" 
-                        label={{ value: `Warning (${chartData[chartData.length-1].warning}A)`, position: 'right', fontSize: 10 }}
+                    {motorFilter !== "ALL" && filteredRows[0]?.warning && (
+                      <ReferenceLine
+                        y={filteredRows[0].warning}
+                        stroke="#E11D48"
+                        strokeDasharray="5 5"
+                        label={{ value: `Warning (${filteredRows[0].warning}A)`, position: 'right', fontSize: 10 }}
                       />
                     )}
                     <Line 
                       type="monotone" 
                       dataKey="current" 
-                      stroke="none"
-                      strokeWidth={0}
-                      dot={{ fill: '#002FA7', r: 5 }}
+                      stroke={motorFilter === "ALL" ? "none" : "#002FA7"}
+                      strokeWidth={motorFilter === "ALL" ? 0 : 2}
+                      connectNulls
+                      dot={{ fill: '#002FA7', r: motorFilter === "ALL" ? 4 : 3 }}
                       activeDot={{ r: 7 }}
                       name="Current (A)"
                       isAnimationActive={false}
@@ -616,14 +683,54 @@ const ConditionMonitoring = () => {
 
                 {/* Data Table */}
                 <div className="mt-6 border-t border-zinc-200 pt-6">
-                  <h4 className="text-sm font-medium text-zinc-900 mb-3">Recent Readings</h4>
-                  <div className="overflow-x-auto">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h4 className="text-sm font-medium text-zinc-900">
+                      Recent Readings
+                      <span className="ml-2 text-xs font-normal text-zinc-500">
+                        showing {tableRows.length} of {filteredRows.length}
+                      </span>
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs text-zinc-500">Motor</label>
+                      <select
+                        data-testid="motor-filter"
+                        value={motorFilter}
+                        onChange={(e) => setMotorFilter(e.target.value)}
+                        className="border border-zinc-300 bg-white px-2 py-1 text-sm rounded-none"
+                      >
+                        <option value="ALL">All motors</option>
+                        {motorOptions.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <label className="text-xs text-zinc-500 ml-2">Rows</label>
+                      <select
+                        data-testid="row-limit"
+                        value={rowLimit}
+                        onChange={(e) => setRowLimit(Number(e.target.value))}
+                        className="border border-zinc-300 bg-white px-2 py-1 text-sm rounded-none"
+                      >
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value={250}>250</option>
+                        <option value={0}>All</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* Fixed-height box: scroll inside it to see every row; header stays visible */}
+                  <div className="overflow-auto max-h-[520px] border border-zinc-200" data-testid="readings-scroll">
                     <table className="w-full">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#e4e4e7]">
                         <tr className="border-b border-zinc-200">
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Time</th>
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Motor</th>
                           <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Current (A)</th>
+                          {hasTemp && (
+                            <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Temp (°C)</th>
+                          )}
+                          {hasI2t && (
+                            <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">I²t</th>
+                          )}
                           <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Normal (A)</th>
                           <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Warning (A)</th>
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Status</th>
@@ -632,11 +739,17 @@ const ConditionMonitoring = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {chartData.slice(0, 15).map((row, idx) => (
+                        {tableRows.map((row, idx) => (
                           <tr key={idx} className="even:bg-zinc-50/50 border-b border-zinc-100">
-                            <td className="px-4 py-2 text-sm text-zinc-700">{row.time}</td>
+                            <td className="px-4 py-2 text-sm text-zinc-700 whitespace-nowrap">{row.time}</td>
                             <td className="px-4 py-2 text-sm text-zinc-700">{row.motor}</td>
-                            <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right" data-numeric="true">{row.current}</td>
+                            <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right" data-numeric="true">{row.current ?? '-'}</td>
+                            {hasTemp && (
+                              <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right">{row.temperature ?? '-'}</td>
+                            )}
+                            {hasI2t && (
+                              <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right">{row.i2t ?? '-'}</td>
+                            )}
                             <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{row.normal}</td>
                             <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{row.warning}</td>
                             <td className="px-4 py-2">
