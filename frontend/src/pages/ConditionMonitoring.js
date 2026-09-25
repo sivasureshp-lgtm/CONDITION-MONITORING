@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import axios from "axios";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Download, Plus, Warning as WarningIcon, XCircle, Camera, Image as ImageIcon } from "@phosphor-icons/react";
@@ -33,6 +33,80 @@ const MOTOR_COMPONENTS = [
   "Sec2 Pusher Finger"
 ];
 
+// ============================================================
+// View settings — change these numbers to suit the plant
+// ============================================================
+const STALE_DAYS = 7;          // motor not read for more than this -> shown red as "overdue"
+const AVG_DAYS = 30;           // window for the running average
+const CHANGE_FLAG_PCT = 15;    // change vs previous reading / vs average above this -> highlighted
+const ROUND_WINDOW_HOURS = 2;  // readings within this time of the newest reading = "latest round"
+
+const PARAMS = {
+  current:     { label: "Current",     unit: "A"   },
+  temperature: { label: "Temperature", unit: "°C"  },
+  i2t:         { label: "I²t",         unit: "A²s" },
+};
+const PARAM_ORDER = ["current", "temperature", "i2t"];
+
+// Sheet timestamps are IST text like "2026-09-24 10:19:05" or "2026-06-16 9:10:52".
+// new Date("2026-09-24 10:19:05") fails on iPhone/Safari, so parse it by hand.
+const parseTs = (raw) => {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    const [, y, mo, d, h, mi, se] = m;
+    // IST = UTC + 5:30
+    return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +(se || 0)) - 330 * 60000);
+  }
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/); // dd/mm/yyyy hh:mm
+  if (m) {
+    const [, d, mo, y, h, mi, se] = m;
+    return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +(se || 0)) - 330 * 60000);
+  }
+  const fallback = new Date(s);
+  return isNaN(fallback) ? null : fallback;
+};
+
+const fmtTime = (d) =>
+  d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" }) +
+  " " +
+  d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
+
+const istDayKey = (d) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
+
+// "" / null / "abc" -> null ; "0" -> 0 (a stopped motor is a real reading)
+const num = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// "Tube Rotation" and "TubeRotation" are the same motor
+const motorKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const ageText = (days) => {
+  if (days === null || days === undefined) return "never";
+  const hours = days * 24;
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${Math.floor(hours)} h ago`;
+  return `${Math.floor(days)} d ago`;
+};
+
+const fmtNum = (v, dp = 2) =>
+  v === null || v === undefined ? "-" : Number.isInteger(v) ? String(v) : v.toFixed(dp);
+
+const fmtPct = (v) => (v === null || v === undefined || !Number.isFinite(v) ? "-" : `${v > 0 ? "+" : ""}${v.toFixed(0)}%`);
+
+const statusBadgeClass = (status) =>
+  status === "OK"
+    ? "bg-green-50 text-green-700"
+    : status === "Warning"
+    ? "bg-yellow-50 text-yellow-800"
+    : status === "Alarm"
+    ? "bg-red-50 text-red-700"
+    : "bg-zinc-100 text-zinc-600";
+
 const ConditionMonitoring = () => {
   const [selectedPlant, setSelectedPlant] = useState("A");
   const [selectedMachine, setSelectedMachine] = useState("");
@@ -56,16 +130,40 @@ const ConditionMonitoring = () => {
   });
   const [photoPreview, setPhotoPreview] = useState(null);
 
-  // ---- Recent Readings table: motor filter + how many rows to show ----
-  const [motorFilter, setMotorFilter] = useState("ALL");
-  const [rowLimit, setRowLimit] = useState(100); // 0 = show all
+  // ---- View Data state ----
+  const [motorFilter, setMotorFilter] = useState("ALL"); // motor name, or "ALL"
+  const [rowLimit, setRowLimit] = useState(100);         // 0 = show all
+  const [param, setParam] = useState("current");         // parameter shown in chart + tables
+  const [machineCfg, setMachineCfg] = useState(null);    // { motors:[], parameters:[] } from machine_config.json
+  const [showAllStatus, setShowAllStatus] = useState(false);
+  const chartRef = useRef(null);
 
-  // Reset the motor filter whenever a different machine is opened
+  // Reset filters whenever a different machine is opened
   useEffect(() => {
     setMotorFilter("ALL");
+    setShowAllStatus(false);
   }, [selectedPlant, selectedMachine]);
 
-  // Unique motor list for the dropdown (in the order they appear in the latest round)
+  // Parameters this machine really has: configured ones first, then any found in the data
+  const availableParams = useMemo(() => {
+    const cfg = (machineCfg?.parameters || []).filter((p) => PARAMS[p]);
+    const inData = PARAM_ORDER.filter((p) => chartData.some((r) => r[p] !== null));
+    const list = [...cfg];
+    inData.forEach((p) => {
+      if (!list.includes(p)) list.push(p);
+    });
+    return list.length ? list : ["current"];
+  }, [machineCfg, chartData]);
+
+  // K1/K4 have no current -> open on I²t/temperature automatically
+  useEffect(() => {
+    if (!availableParams.includes(param)) setParam(availableParams[0]);
+  }, [availableParams, param]);
+
+  const unit = PARAMS[param]?.unit || "";
+  const pLabel = PARAMS[param]?.label || param;
+
+  // Unique motor list for the dropdown
   const motorOptions = useMemo(() => {
     const seen = [];
     chartData.forEach((r) => {
@@ -74,32 +172,149 @@ const ConditionMonitoring = () => {
     return seen;
   }, [chartData]);
 
-  // Rows after the motor filter (newest first, same order as the API)
+  // Rows after the motor filter (newest first)
   const filteredRows = useMemo(
     () => (motorFilter === "ALL" ? chartData : chartData.filter((r) => r.motor === motorFilter)),
     [chartData, motorFilter]
   );
 
-  // Rows actually drawn in the table
+  // Rows actually drawn in the Recent Readings table
   const tableRows = rowLimit === 0 ? filteredRows : filteredRows.slice(0, rowLimit);
 
-  // Chart reads left-to-right as oldest -> newest
-  const trendData = useMemo(() => [...filteredRows].reverse(), [filteredRows]);
+  // Chart: oldest -> newest; 0 = motor stopped, left out so it does not flatten the scale
+  const trendData = useMemo(
+    () =>
+      [...filteredRows].reverse().map((r) => ({
+        ...r,
+        value: r[param] !== null && r[param] !== 0 ? r[param] : null,
+      })),
+    [filteredRows, param]
+  );
+  const trendHasValues = trendData.some((r) => r.value !== null);
 
-  // Only show Temperature / I2t columns when this machine actually has those values
-  const hasTemp = filteredRows.some((r) => r.temperature !== null && r.temperature !== undefined);
-  const hasI2t = filteredRows.some((r) => r.i2t !== null && r.i2t !== undefined);
+  // Show Temperature / I²t columns only when this machine has those values
+  const hasCurrent = filteredRows.some((r) => r.current !== null);
+  const hasTemp = filteredRows.some((r) => r.temperature !== null);
+  const hasI2t = filteredRows.some((r) => r.i2t !== null);
+
+  // ============================================================
+  // (1) LATEST STATUS OF EVERY MOTOR
+  // ============================================================
+  const motorSummary = useMemo(() => {
+    const now = Date.now();
+    const byKey = new Map();
+    // configured motors first, so the order follows machine_config.json
+    (machineCfg?.motors || []).forEach((m) => {
+      const k = motorKey(m);
+      if (k && !byKey.has(k)) byKey.set(k, { name: m, rows: [] });
+    });
+    chartData.forEach((r) => {
+      const k = motorKey(r.motor);
+      if (!k) return;
+      if (!byKey.has(k)) byKey.set(k, { name: r.motor, rows: [] });
+      const entry = byKey.get(k);
+      entry.name = entry.rows.length ? entry.name : r.motor; // prefer the name used in the data
+      entry.rows.push(r); // chartData is newest-first, so rows stay newest-first
+    });
+
+    const cutoff = now - AVG_DAYS * 86400000;
+    const list = [...byKey.values()].map(({ name, rows }, idx) => {
+      const last = rows[0] || null;
+      const withVal = rows.filter((r) => r[param] !== null);
+      const lastV = withVal.length ? withVal[0][param] : null;
+      const prevV = withVal.length > 1 ? withVal[1][param] : null;
+      // no % change when either reading is a stopped motor (0)
+      const change = lastV > 0 && prevV > 0 ? ((lastV - prevV) / prevV) * 100 : null;
+      const running = withVal.filter((r) => r[param] > 0 && r.ts && r.ts.getTime() >= cutoff);
+      const avg = running.length ? running.reduce((s, r) => s + r[param], 0) / running.length : null;
+      const vsAvg = lastV > 0 && avg ? ((lastV - avg) / avg) * 100 : null;
+      const ageDays = last?.ts ? (now - last.ts.getTime()) / 86400000 : null;
+      const stale = ageDays === null || ageDays > STALE_DAYS;
+      return {
+        name,
+        order: idx,
+        last,
+        lastV,
+        prevV,
+        change,
+        avg,
+        avgN: running.length,
+        vsAvg,
+        ageDays,
+        stale,
+        stopped: lastV === 0,
+        status: last?.status || "No data",
+        normalLimit: last ? last[`normal_${param}`] : null,
+        warningLimit: last ? last[`warning_${param}`] : null,
+      };
+    });
+
+    // Alarm -> Warning -> overdue / no data -> OK ; keep config order inside each group
+    const rank = (m) => (m.status === "Alarm" ? 0 : m.status === "Warning" ? 1 : m.stale ? 2 : 3);
+    list.sort((a, b) => rank(a) - rank(b) || a.order - b.order);
+    return list;
+  }, [chartData, machineCfg, param]);
+
+  const summaryCounts = useMemo(
+    () => ({
+      alarm: motorSummary.filter((m) => m.status === "Alarm").length,
+      warning: motorSummary.filter((m) => m.status === "Warning").length,
+      overdue: motorSummary.filter((m) => m.stale && m.status !== "Alarm" && m.status !== "Warning").length,
+      ok: motorSummary.filter((m) => m.status === "OK" && !m.stale).length,
+    }),
+    [motorSummary]
+  );
+
+  // Open one motor's trend from the status table
+  const focusMotor = (name) => {
+    const match = motorOptions.find((m) => motorKey(m) === motorKey(name));
+    if (!match) return;
+    setMotorFilter(match);
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
+  // ============================================================
+  // (3) ROUND COMPLETENESS
+  // ============================================================
+  const coverage = useMemo(() => {
+    const total = motorSummary.length;
+    const todayKey = istDayKey(new Date());
+    const readToday = motorSummary.filter((m) => m.last?.ts && istDayKey(m.last.ts) === todayKey);
+    const notToday = motorSummary.filter((m) => !(m.last?.ts && istDayKey(m.last.ts) === todayKey));
+
+    const newest = chartData.find((r) => r.ts)?.ts || null;
+    let roundMotors = [];
+    let roundMissing = [];
+    if (newest) {
+      const from = newest.getTime() - ROUND_WINDOW_HOURS * 3600000;
+      const inRound = new Set(
+        chartData.filter((r) => r.ts && r.ts.getTime() >= from).map((r) => motorKey(r.motor))
+      );
+      roundMotors = motorSummary.filter((m) => inRound.has(motorKey(m.name)));
+      roundMissing = motorSummary.filter((m) => !inRound.has(motorKey(m.name)));
+    }
+    const overdue = motorSummary.filter((m) => m.stale);
+    return { total, readToday, notToday, newest, roundMotors, roundMissing, overdue };
+  }, [motorSummary, chartData]);
 
   // Export the filtered rows as CSV (opens in Excel)
   const exportCsv = () => {
-    const header = ["Time", "Motor", "Current (A)", "Temperature (C)", "I2t", "Normal (A)", "Warning (A)", "Status", "Source", "Photo URL"];
+    const header = [
+      "Time", "Motor", "Current (A)", "Temperature (C)", "I2t (A2s)",
+      "Normal Current", "Warning Current", "Normal Temp", "Warning Temp", "Normal I2t", "Warning I2t",
+      "Status", "Source", "Photo URL",
+    ];
     const esc = (v) => {
       const s = v === null || v === undefined ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const lines = [header.join(",")].concat(
       filteredRows.map((r) =>
-        [r.time, r.motor, r.current, r.temperature, r.i2t, r.normal, r.warning, r.status, r.entry_source, r.photo]
+        [
+          r.time, r.motor, r.current, r.temperature, r.i2t,
+          r.normal_current, r.warning_current, r.normal_temperature, r.warning_temperature, r.normal_i2t, r.warning_i2t,
+          r.status, r.entry_source, r.photo,
+        ]
           .map(esc)
           .join(",")
       )
@@ -150,24 +365,39 @@ const ConditionMonitoring = () => {
 
   const fetchMonitoringData = async (plant, machine) => {
     setLoading(true);
+    setMachineCfg(null);
+    // Configured motor list + parameters (used for "missing motors" and the parameter switch).
+    // If it fails, the page still works from the readings alone.
+    axios
+      .get(`${API}/machine-config/${plant}/${machine}`)
+      .then((res) => setMachineCfg(res.data || null))
+      .catch(() => setMachineCfg(null));
     try {
       const res = await axios.get(`${API}/condition-monitoring/machine/${plant}/${machine}`);
-      // Show date+time so readings from different days are distinguishable
-      const transformed = res.data.map(item => ({
-        time: new Date(item.timestamp).toLocaleDateString('en-IN', {day:'2-digit',month:'short'})
-          + ' ' + new Date(item.timestamp).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',hour12:false}),
-        current: typeof item.current === 'number' ? item.current : parseFloat(item.current) || null,
-        temperature: typeof item.temperature === 'number' ? item.temperature : parseFloat(item.temperature) || null,
-        i2t: typeof item.i2t === 'number' ? item.i2t : parseFloat(item.i2t) || null,
-        normal: item.normal_current,
-        warning: item.warning_current,
-        motor: item.motor,
-        status: item.status,
-        photo: item.photo_url || item.photo || null,
-        has_photo: item.has_photo || !!item.photo_url,
-        verified: item.verified,
-        entry_source: item.entry_source
-      }));
+      const transformed = (res.data || []).map((item) => {
+        const ts = parseTs(item.timestamp);
+        return {
+          ts,
+          time: ts ? fmtTime(ts) : String(item.timestamp || ""),
+          current: num(item.current),
+          temperature: num(item.temperature),
+          i2t: num(item.i2t),
+          normal_current: num(item.normal_current),
+          warning_current: num(item.warning_current),
+          normal_temperature: num(item.normal_temperature),
+          warning_temperature: num(item.warning_temperature),
+          normal_i2t: num(item.normal_i2t),
+          warning_i2t: num(item.warning_i2t),
+          motor: item.motor,
+          status: item.status,
+          photo: item.photo_url || item.photo || null,
+          has_photo: item.has_photo === true || item.has_photo === "Yes" || !!item.photo_url,
+          verified: item.verified_by || item.verified,
+          entry_source: item.entry_source,
+        };
+      });
+      // newest first, rows without a readable time at the end
+      transformed.sort((a, b) => (b.ts ? b.ts.getTime() : 0) - (a.ts ? a.ts.getTime() : 0));
       setChartData(transformed);
     } catch (e) {
       console.error("Error fetching monitoring data:", e);
@@ -591,7 +821,7 @@ const ConditionMonitoring = () => {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-lg font-medium tracking-tight text-zinc-900">
-                  {selectedMachine ? `${selectedPlant} - ${selectedMachine} Motor Current Trend` : 'Select a machine to view data'}
+                  {selectedMachine ? `${selectedPlant} - ${selectedMachine} Condition Overview` : 'Select a machine to view data'}
                 </h3>
                 {selectedMachine && (
                   <p className="text-sm text-zinc-600 mt-1">
@@ -628,58 +858,286 @@ const ConditionMonitoring = () => {
               </div>
             ) : (
               <div data-testid="chart-container">
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                    <XAxis 
-                      dataKey="time" 
-                      tick={{ fontSize: 12, fill: '#71717a' }}
-                      stroke="#a1a1aa"
-                    />
-                    <YAxis 
-                      label={{ value: 'Current (A)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#71717a' } }}
-                      tick={{ fontSize: 12, fill: '#71717a', fontFamily: 'IBM Plex Mono, monospace' }}
-                      stroke="#a1a1aa"
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'white', 
-                        border: '1px solid #e4e4e7',
-                        borderRadius: 0,
-                        fontSize: 12
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {/* Limit lines: only meaningful for ONE motor, so show them when a motor is selected */}
-                    {motorFilter !== "ALL" && filteredRows[0]?.normal && (
-                      <ReferenceLine
-                        y={filteredRows[0].normal}
-                        stroke="#16A34A"
-                        strokeDasharray="5 5"
-                        label={{ value: `Normal (${filteredRows[0].normal}A)`, position: 'right', fontSize: 10 }}
-                      />
+                {/* ================= (3) ROUND COMPLETENESS ================= */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6" data-testid="round-coverage">
+                  <div className="border border-zinc-200 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">Read today</p>
+                    <p className="text-2xl font-mono mt-1">
+                      <span className={coverage.readToday.length === coverage.total ? "text-green-700" : "text-zinc-950"}>
+                        {coverage.readToday.length}
+                      </span>
+                      <span className="text-zinc-400 text-lg"> / {coverage.total}</span>
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">motors with a reading today (IST)</p>
+                    {coverage.notToday.length > 0 && coverage.notToday.length < coverage.total && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-[#002FA7] cursor-pointer">
+                          {coverage.notToday.length} not read today
+                        </summary>
+                        <p className="text-xs text-zinc-700 mt-1 leading-5">
+                          {coverage.notToday.map((m) => m.name).join(", ")}
+                        </p>
+                      </details>
                     )}
-                    {motorFilter !== "ALL" && filteredRows[0]?.warning && (
-                      <ReferenceLine
-                        y={filteredRows[0].warning}
-                        stroke="#E11D48"
-                        strokeDasharray="5 5"
-                        label={{ value: `Warning (${filteredRows[0].warning}A)`, position: 'right', fontSize: 10 }}
-                      />
+                  </div>
+
+                  <div className="border border-zinc-200 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">Latest round</p>
+                    <p className="text-2xl font-mono mt-1">
+                      <span className={coverage.roundMissing.length === 0 ? "text-green-700" : "text-yellow-700"}>
+                        {coverage.roundMotors.length}
+                      </span>
+                      <span className="text-zinc-400 text-lg"> / {coverage.total}</span>
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {coverage.newest ? `round of ${fmtTime(coverage.newest)}` : "no readings yet"}
+                    </p>
+                    {coverage.roundMissing.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-[#002FA7] cursor-pointer">
+                          {coverage.roundMissing.length} missing in this round
+                        </summary>
+                        <p className="text-xs text-zinc-700 mt-1 leading-5">
+                          {coverage.roundMissing.map((m) => m.name).join(", ")}
+                        </p>
+                      </details>
                     )}
-                    <Line 
-                      type="monotone" 
-                      dataKey="current" 
-                      stroke={motorFilter === "ALL" ? "none" : "#002FA7"}
-                      strokeWidth={motorFilter === "ALL" ? 0 : 2}
-                      connectNulls
-                      dot={{ fill: '#002FA7', r: motorFilter === "ALL" ? 4 : 3 }}
-                      activeDot={{ r: 7 }}
-                      name="Current (A)"
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                  </div>
+
+                  <div className={`border p-4 ${coverage.overdue.length ? "border-red-200 bg-red-50/40" : "border-zinc-200"}`}>
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-500">
+                      Overdue (&gt; {STALE_DAYS} days)
+                    </p>
+                    <p className={`text-2xl font-mono mt-1 ${coverage.overdue.length ? "text-red-700" : "text-green-700"}`}>
+                      {coverage.overdue.length}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">motors not read for over {STALE_DAYS} days</p>
+                    {coverage.overdue.length > 0 && (
+                      <p className="text-xs text-red-700 mt-2 leading-5">
+                        {coverage.overdue
+                          .map((m) => `${m.name} (${m.ageDays === null ? "no reading" : ageText(m.ageDays)})`)
+                          .join(", ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* ================= (2) PARAMETER SWITCH ================= */}
+                <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="param-switch">
+                  <span className="text-xs text-zinc-500 mr-1">Parameter</span>
+                  {availableParams.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setParam(p)}
+                      data-testid={`param-${p}`}
+                      className={`px-3 py-1.5 text-sm border rounded-none transition-colors ${
+                        param === p
+                          ? "bg-[#002FA7] text-white border-[#002FA7]"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:border-zinc-500"
+                      }`}
+                    >
+                      {PARAMS[p].label} ({PARAMS[p].unit})
+                    </button>
+                  ))}
+                  <span className="text-xs text-zinc-400 ml-2">applies to the status table and the trend chart</span>
+                </div>
+
+                {/* ================= (1) LATEST STATUS OF EVERY MOTOR ================= */}
+                <div className="mb-8" data-testid="motor-status">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h4 className="text-sm font-medium text-zinc-900">Latest status — every motor</h4>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="px-2 py-1 bg-red-50 text-red-700 font-bold">{summaryCounts.alarm} Alarm</span>
+                      <span className="px-2 py-1 bg-yellow-50 text-yellow-800 font-bold">{summaryCounts.warning} Warning</span>
+                      <span className="px-2 py-1 bg-zinc-100 text-zinc-700 font-bold">{summaryCounts.overdue} Overdue / no data</span>
+                      <span className="px-2 py-1 bg-green-50 text-green-700 font-bold">{summaryCounts.ok} OK</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-500 mb-2">
+                    Problems first. Change = vs previous reading; vs avg = vs this motor's {AVG_DAYS}-day running average
+                    (stopped readings of 0 excluded). Changes above {CHANGE_FLAG_PCT}% are highlighted. Click a motor to open its trend.
+                  </p>
+                  <div className={`overflow-auto border border-zinc-200 ${showAllStatus ? "" : "max-h-[420px]"}`}>
+                    <table className="w-full">
+                      <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#e4e4e7]">
+                        <tr>
+                          {[
+                            ["Motor", "left"],
+                            [`Last (${unit})`, "right"],
+                            ["Previous", "right"],
+                            ["Change", "right"],
+                            [`${AVG_DAYS}-day avg`, "right"],
+                            ["vs avg", "right"],
+                            [`Warning at (${unit})`, "right"],
+                            ["Last read", "left"],
+                            ["Status", "left"],
+                          ].map(([h, align]) => (
+                            <th
+                              key={h}
+                              className={`text-${align} px-3 py-2 text-[10px] sm:text-xs uppercase tracking-wider font-bold text-zinc-500 whitespace-nowrap`}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {motorSummary.map((m) => {
+                          const bigChange = m.change !== null && Math.abs(m.change) >= CHANGE_FLAG_PCT;
+                          const bigVsAvg = m.vsAvg !== null && Math.abs(m.vsAvg) >= CHANGE_FLAG_PCT;
+                          const hasData = !!m.last;
+                          return (
+                            <tr
+                              key={m.name}
+                              onClick={() => hasData && focusMotor(m.name)}
+                              className={`border-b border-zinc-100 ${hasData ? "cursor-pointer hover:bg-blue-50/60" : ""} ${
+                                m.status === "Alarm" ? "bg-red-50/40" : m.status === "Warning" ? "bg-yellow-50/40" : ""
+                              }`}
+                              title={hasData ? "Click to open this motor's trend" : "No reading in the loaded history"}
+                            >
+                              <td className="px-3 py-2 text-sm text-zinc-900 whitespace-nowrap">{m.name}</td>
+                              <td className="px-3 py-2 text-sm font-mono text-right text-zinc-950">
+                                {m.stopped ? <span className="text-zinc-500 whitespace-nowrap">0 (stopped)</span> : fmtNum(m.lastV)}
+                              </td>
+                              <td className="px-3 py-2 text-sm font-mono text-right text-zinc-600">{fmtNum(m.prevV)}</td>
+                              <td className={`px-3 py-2 text-sm font-mono text-right ${bigChange ? (m.change > 0 ? "text-red-700 font-bold" : "text-blue-700 font-bold") : "text-zinc-600"}`}>
+                                {fmtPct(m.change)}
+                              </td>
+                              <td className="px-3 py-2 text-sm font-mono text-right text-zinc-600" title={`${m.avgN} running readings`}>
+                                {fmtNum(m.avg)}
+                              </td>
+                              <td className={`px-3 py-2 text-sm font-mono text-right ${bigVsAvg ? (m.vsAvg > 0 ? "text-red-700 font-bold" : "text-blue-700 font-bold") : "text-zinc-600"}`}>
+                                {fmtPct(m.vsAvg)}
+                              </td>
+                              <td className="px-3 py-2 text-sm font-mono text-right text-zinc-600">{fmtNum(m.warningLimit)}</td>
+                              <td className={`px-3 py-2 text-sm whitespace-nowrap ${m.stale ? "text-red-700 font-medium" : "text-zinc-600"}`}>
+                                {ageText(m.ageDays)}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className={`px-2 py-1 text-xs font-bold uppercase tracking-wider whitespace-nowrap ${statusBadgeClass(m.status)}`}>
+                                  {m.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {motorSummary.length > 10 && (
+                    <button
+                      onClick={() => setShowAllStatus((v) => !v)}
+                      className="mt-2 text-xs text-[#002FA7] hover:underline"
+                    >
+                      {showAllStatus ? "Collapse table" : `Expand table (${motorSummary.length} motors)`}
+                    </button>
+                  )}
+                </div>
+
+                {/* ================= TREND CHART ================= */}
+                <div ref={chartRef} className="border-t border-zinc-200 pt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h4 className="text-sm font-medium text-zinc-900">
+                      {pLabel} trend — {motorFilter === "ALL" ? "all motors" : motorFilter}
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-zinc-500">Motor</label>
+                      <select
+                        value={motorFilter}
+                        onChange={(e) => setMotorFilter(e.target.value)}
+                        className="border border-zinc-300 bg-white px-2 py-1 text-sm rounded-none"
+                        data-testid="chart-motor-filter"
+                      >
+                        <option value="ALL">All motors</option>
+                        {motorOptions.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {motorFilter === "ALL" && (
+                    <p className="text-xs text-zinc-500 mb-2">
+                      Tip: pick one motor (or click it in the status table) to see its trend line and its own Normal / Warning limits.
+                    </p>
+                  )}
+                  {!trendHasValues ? (
+                    <div className="h-64 flex items-center justify-center border border-dashed border-zinc-200">
+                      <p className="text-sm text-zinc-500">No {pLabel.toLowerCase()} readings for this selection</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart data={trendData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                        <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#71717a' }} stroke="#a1a1aa" minTickGap={24} />
+                        <YAxis
+                          label={{ value: `${pLabel} (${unit})`, angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#71717a' } }}
+                          tick={{ fontSize: 12, fill: '#71717a', fontFamily: 'IBM Plex Mono, monospace' }}
+                          stroke="#a1a1aa"
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload || !payload.length) return null;
+                            const r = payload[0].payload;
+                            return (
+                              <div className="bg-white border border-zinc-200 px-3 py-2 text-xs shadow-sm">
+                                <div className="font-medium text-zinc-900">{r.motor}</div>
+                                <div className="text-zinc-500">{r.time}</div>
+                                <div className="mt-1 font-mono">
+                                  {pLabel}: {fmtNum(r[param])} {unit}
+                                </div>
+                                <div className="mt-1">
+                                  <span className={`px-1.5 py-0.5 font-bold uppercase ${statusBadgeClass(r.status)}`}>{r.status}</span>
+                                </div>
+                                {r.verified && <div className="text-zinc-500 mt-1">By: {r.verified}</div>}
+                              </div>
+                            );
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        {/* Limit lines: only meaningful for ONE motor */}
+                        {motorFilter !== "ALL" && filteredRows[0]?.[`normal_${param}`] !== null && filteredRows[0]?.[`normal_${param}`] !== undefined && (
+                          <ReferenceLine
+                            y={filteredRows[0][`normal_${param}`]}
+                            stroke="#16A34A"
+                            strokeDasharray="5 5"
+                            ifOverflow="extendDomain"
+                            label={{ value: `Normal ${filteredRows[0][`normal_${param}`]} ${unit}`, position: 'insideTopRight', fontSize: 10 }}
+                          />
+                        )}
+                        {motorFilter !== "ALL" && filteredRows[0]?.[`warning_${param}`] !== null && filteredRows[0]?.[`warning_${param}`] !== undefined && (
+                          <ReferenceLine
+                            y={filteredRows[0][`warning_${param}`]}
+                            stroke="#E11D48"
+                            strokeDasharray="5 5"
+                            ifOverflow="extendDomain"
+                            label={{ value: `Warning ${filteredRows[0][`warning_${param}`]} ${unit}`, position: 'insideTopRight', fontSize: 10 }}
+                          />
+                        )}
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke={motorFilter === "ALL" ? "none" : "#002FA7"}
+                          strokeWidth={motorFilter === "ALL" ? 0 : 2}
+                          connectNulls
+                          dot={(props) => {
+                            const { cx, cy, payload, index } = props;
+                            if (cx === undefined || cy === undefined || payload?.value === null) {
+                              return <g key={`d-${index}`} />;
+                            }
+                            const fill =
+                              payload.status === "Alarm" ? "#DC2626" : payload.status === "Warning" ? "#CA8A04" : "#002FA7";
+                            return (
+                              <circle key={`d-${index}`} cx={cx} cy={cy} r={motorFilter === "ALL" ? 3.5 : 3} fill={fill} stroke="none" />
+                            );
+                          }}
+                          activeDot={{ r: 6 }}
+                          name={`${pLabel} (${unit}) — dots: blue OK, amber Warning, red Alarm`}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
 
                 {/* Data Table */}
                 <div className="mt-6 border-t border-zinc-200 pt-6">
@@ -724,15 +1182,17 @@ const ConditionMonitoring = () => {
                         <tr className="border-b border-zinc-200">
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Time</th>
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Motor</th>
-                          <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Current (A)</th>
+                          {hasCurrent && (
+                            <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Current (A)</th>
+                          )}
                           {hasTemp && (
                             <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Temp (°C)</th>
                           )}
                           {hasI2t && (
                             <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">I²t</th>
                           )}
-                          <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Normal (A)</th>
-                          <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Warning (A)</th>
+                          <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Normal ({unit})</th>
+                          <th className="text-right px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Warning ({unit})</th>
                           <th className="text-left px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Status</th>
                           <th className="text-center px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Photo</th>
                           <th className="text-center px-4 py-2 text-[10px] sm:text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Source</th>
@@ -742,16 +1202,18 @@ const ConditionMonitoring = () => {
                         {tableRows.map((row, idx) => (
                           <tr key={idx} className="even:bg-zinc-50/50 border-b border-zinc-100">
                             <td className="px-4 py-2 text-sm text-zinc-700 whitespace-nowrap">{row.time}</td>
-                            <td className="px-4 py-2 text-sm text-zinc-700">{row.motor}</td>
-                            <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right" data-numeric="true">{row.current ?? '-'}</td>
+                            <td className="px-4 py-2 text-sm text-zinc-700 whitespace-nowrap">{row.motor}</td>
+                            {hasCurrent && (
+                              <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right" data-numeric="true">{row.current ?? '-'}</td>
+                            )}
                             {hasTemp && (
                               <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right">{row.temperature ?? '-'}</td>
                             )}
                             {hasI2t && (
                               <td className="px-4 py-2 text-sm font-mono text-zinc-950 text-right">{row.i2t ?? '-'}</td>
                             )}
-                            <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{row.normal}</td>
-                            <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{row.warning}</td>
+                            <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{fmtNum(row[`normal_${param}`])}</td>
+                            <td className="px-4 py-2 text-sm font-mono text-zinc-600 text-right">{fmtNum(row[`warning_${param}`])}</td>
                             <td className="px-4 py-2">
                               <span className={`px-2 py-1 text-xs font-bold uppercase tracking-wider rounded-none ${
                                 row.status === 'OK' ? 'bg-green-50 text-green-700' :
