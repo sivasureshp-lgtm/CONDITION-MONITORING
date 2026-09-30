@@ -8,6 +8,7 @@ Backend Server (Render Free Tier Edition)
 - Brevo HTTP API = daily report email (SMTP blocked on Render free tier)
 """
 import gc
+import sys
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -158,12 +159,24 @@ async def load_cache_from_sheets():
         return
     
     try:
-        all_data = readings_sheet.get_all_records()
-        readings_cache = all_data[-MAX_CACHE_SIZE:] if len(all_data) > MAX_CACHE_SIZE else all_data
-        for r in readings_cache:
-            r.pop("photo_base64", None)
+        # MEMORY FIX: never read the whole sheet (get_all_records on 40k+ rows
+        # needs 150-300 MB and was the main cause of Render restarts).
+        # 1) small index of columns C:E tells us where the data ends,
+        # 2) read only the last MAX_CACHE_SIZE rows,
+        # 3) build the newest-reading-per-motor table (~300 rows).
+        await get_plant_machine_index(force=True)
+        last_row = _plant_machine_index_cache.get("last_row", 1)
+        if last_row >= 2:
+            first_row = max(2, last_row - MAX_CACHE_SIZE + 1)
+            block = readings_sheet.get(f"A{first_row}:{LAST_COL}{last_row}")
+            readings_cache = [r for r in _rows_to_dicts([block]) if r.get("plant") or r.get("machine")]
+            del block
+        else:
+            readings_cache = []
         cache_loaded = True
-        logging.info(f"✅ Loaded {len(readings_cache)} readings into cache (max {MAX_CACHE_SIZE})")
+        logging.info(f"✅ Loaded last {len(readings_cache)} readings into cache | {memory_mb()}")
+        await build_latest_by_motor()
+        gc.collect()
     except Exception as e:
         logging.error(f"Cache load error: {e}")
         cache_loaded = True
@@ -277,8 +290,7 @@ def save_reading_to_sheets(reading_data: dict):
             reading_data.get('photo_url', ''),
             'Yes' if reading_data.get('bulk_entry') else 'No'
         ]
-        readings_sheet.append_row(row, value_input_option='USER_ENTERED')
-        return True
+        return readings_sheet.append_row(row, value_input_option='USER_ENTERED') or True
     except Exception as e:
         logging.error(f"Sheets write error: {e}")
         return False
@@ -302,9 +314,9 @@ def save_bulk_readings_to_sheets(readings_list: list):
                 'Yes' if r.get('qr_verified') else 'No',
                 r.get('manual_override_reason', '')
             ])
-        readings_sheet.append_rows(rows, value_input_option='USER_ENTERED')
-        logging.info(f"✅ Saved {len(rows)} readings to Google Sheets")
-        return True
+        resp = readings_sheet.append_rows(rows, value_input_option='USER_ENTERED')
+        logging.info(f"✅ Saved {len(rows)} readings to Google Sheets | {memory_mb()}")
+        return resp or True
     except Exception as e:
         logging.error(f"Sheets bulk write error: {e}")
         return False
@@ -316,13 +328,9 @@ def save_bulk_readings_to_sheets(readings_list: list):
 def _build_report_data():
     cutoff = datetime.now(IST) - timedelta(hours=24)
     cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
-    recent = [r for r in readings_cache if r.get("Timestamp", r.get("timestamp", "")) >= cutoff_str]
-    latest = {}
-    for r in recent:
-        key = f"{r.get('Plant', r.get('plant',''))}_{r.get('Machine', r.get('machine',''))}_{r.get('Motor', r.get('motor',''))}"
-        ts = r.get("Timestamp", r.get("timestamp", ""))
-        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
-            latest[key] = r
+    # newest reading of every motor, keeping those read in the last 24 h
+    recent = [r for r in latest_docs() if str(r.get("Timestamp", r.get("timestamp", ""))) >= cutoff_str]
+    latest = {i: r for i, r in enumerate(recent)}
     total = len(latest)
     ok_count = sum(1 for r in latest.values() if r.get("Status", r.get("status", "")) == "OK")
     warning_count = sum(1 for r in latest.values() if r.get("Status", r.get("status", "")) == "Warning")
@@ -557,6 +565,11 @@ async def add_bulk_condition_data(data: dict):
             watermarked = add_timestamp_watermark(photo_base64)
             photo_url = upload_photo_to_cloudinary(watermarked, plant, machine)
             has_photo = True
+            # free the photo copies before processing readings
+            del watermarked
+            photo_base64 = None
+            data.pop("photo_base64", None)
+            gc.collect()
         inserted_count = 0
         alarm_count = 0
         warning_count = 0
@@ -601,10 +614,12 @@ async def add_bulk_condition_data(data: dict):
             docs_for_sheets.append(doc)
             readings_cache.append(doc)
             inserted_count += 1
-        sheets_synced = save_bulk_readings_to_sheets(docs_for_sheets)
+        sheets_resp = save_bulk_readings_to_sheets(docs_for_sheets)
+        sheets_synced = bool(sheets_resp)
         if len(readings_cache) > MAX_CACHE_SIZE:
             del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
-        _plant_machine_index_cache["data"] = None  # force index to refresh with these new readings
+        # extend the index in place (no full re-read) + update latest-per-motor
+        _register_written_docs(docs_for_sheets, sheets_resp if isinstance(sheets_resp, dict) else None)
         return {"message": "Bulk readings submitted successfully", "inserted_count": inserted_count, "alarm_count": alarm_count, "warning_count": warning_count, "sheets_synced": sheets_synced}
     except Exception as e:
         logging.error(f"Bulk entry error: {e}")
@@ -634,11 +649,11 @@ async def add_condition_data(data: ConditionMonitoringCreate):
         "entry_source": data.entry_source, "has_photo": has_photo,
         "photo_url": photo_url, "bulk_entry": False
     }
-    save_reading_to_sheets(doc)
+    sheets_resp = save_reading_to_sheets(doc)
     readings_cache.append(doc)
     if len(readings_cache) > MAX_CACHE_SIZE:
         del readings_cache[:len(readings_cache) - MAX_CACHE_SIZE]
-    _plant_machine_index_cache["data"] = None  # force index to refresh with this new reading
+    _register_written_docs([doc], sheets_resp if isinstance(sheets_resp, dict) else None)
     return {"message": "Data added successfully", "status": status, "has_photo": has_photo}
 
 @api_router.get("/condition-monitoring/plant/{plant}")
@@ -677,7 +692,8 @@ SHEET_HEADERS = [
     "Normal_Temperature", "Warning_Temperature",
     "Normal_I2t", "Warning_I2t",
     "Status", "Verified_By", "Entry_Source",
-    "Has_Photo", "Photo_URL", "Bulk_Entry"
+    "Has_Photo", "Photo_URL", "Bulk_Entry",
+    "QR_Verified", "Manual_Override_Reason"
 ]
 
 # FIELD_KEYS: the lowercase keys the frontend (ConditionMonitoring.js)
@@ -692,30 +708,193 @@ FIELD_KEYS = [
     "normal_temperature", "warning_temperature",
     "normal_i2t", "warning_i2t",
     "status", "verified_by", "entry_source",
-    "has_photo", "photo_url", "bulk_entry"
+    "has_photo", "photo_url", "bulk_entry",
+    "qr_verified", "manual_override_reason"
 ]
+LAST_COL = "V"  # column letter of the 22nd column (Manual_Override_Reason)
+_BOOL_KEYS = {"has_photo", "bulk_entry", "qr_verified"}
 
-_plant_machine_index_cache = {"data": None, "ts": 0.0}
-INDEX_CACHE_TTL = 30  # seconds
+# ============================================================
+# MEMORY-SAFE INDEX + LATEST READING PER MOTOR
+# ------------------------------------------------------------
+# The index holds only (Plant, Machine, row_number, Motor) for every row,
+# read from columns C:E (~8-15 MB peak for 40k rows, vs 150-300 MB for a
+# full-sheet read). It is:
+#   * built once at startup,
+#   * extended IN PLACE after every write (no full re-read per submission),
+#   * fully re-read only every INDEX_CACHE_TTL seconds as a safety net
+#     (e.g. if someone edits or deletes rows directly in the sheet).
+#
+# _latest_by_motor keeps the newest reading of every motor (~300 rows).
+# Dashboard, alarms, health % and the daily email use it, so a motor is
+# never missed just because it was read long ago.
+# ============================================================
+_plant_machine_index_cache = {"data": None, "ts": 0.0, "last_row": 1}
+INDEX_CACHE_TTL = 600  # seconds (10 min) - full safety-net refresh
+_latest_by_motor = {}          # (plant, machine, motor_key) -> reading dict
+_latest_ready = False
 
-async def get_plant_machine_index():
-    """Lightweight (Plant, Machine, row_number) index, cached briefly."""
+
+def _motor_key(name) -> str:
+    """'Tube Rotation' and 'TubeRotation' are the same motor."""
+    return "".join(ch for ch in str(name or "").lower() if ch.isalnum())
+
+
+def _latest_key(doc: dict):
+    return (
+        str(doc.get("plant", doc.get("Plant", ""))),
+        str(doc.get("machine", doc.get("Machine", ""))),
+        _motor_key(doc.get("motor", doc.get("Motor", ""))),
+    )
+
+
+def _merge_row_ranges(row_numbers):
+    """[5,6,7,10,11] -> [(5,7),(10,11)] so consecutive rows are fetched in one range."""
+    bounds = []
+    if not row_numbers:
+        return bounds
+    rows = sorted(row_numbers)
+    start = prev = rows[0]
+    for r in rows[1:]:
+        if r == prev + 1:
+            prev = r
+            continue
+        bounds.append((start, prev))
+        start = prev = r
+    bounds.append((start, prev))
+    return bounds
+
+
+def _fetch_rows(row_numbers, chunk: int = 40):
+    """Fetch specific sheet rows (full width) as lowercase-key dicts."""
+    data = []
+    bounds = _merge_row_ranges(row_numbers)
+    for i in range(0, len(bounds), chunk):
+        ranges = [f"A{s}:{LAST_COL}{e}" for (s, e) in bounds[i:i + chunk]]
+        data.extend(_rows_to_dicts(readings_sheet.batch_get(ranges)))
+    return data
+
+
+def _build_index_sync():
+    """Read ONLY columns C:E (Plant, Machine, Motor) and build the row index."""
+    values = readings_sheet.get("C2:E")
+    idx = []
+    last_row = 1
+    intern = sys.intern  # identical strings share memory (e.g. 'K', 'K1')
+    for i, row in enumerate(values):
+        row_num = i + 2  # sheet rows are 1-based, plus the header row
+        plant_v = row[0].strip() if len(row) > 0 else ""
+        machine_v = row[1].strip() if len(row) > 1 else ""
+        motor_v = row[2].strip() if len(row) > 2 else ""
+        if plant_v or machine_v:
+            idx.append((intern(plant_v), intern(machine_v), row_num, intern(motor_v)))
+            last_row = row_num
+    del values
+    gc.collect()
+    return idx, last_row
+
+
+async def get_plant_machine_index(force: bool = False):
+    """(Plant, Machine, row_number, Motor) for every data row; refreshed every 10 min."""
     global _plant_machine_index_cache
     now = datetime.now(IST).timestamp()
-    if _plant_machine_index_cache["data"] is not None and (now - _plant_machine_index_cache["ts"]) < INDEX_CACHE_TTL:
-        return _plant_machine_index_cache["data"]
-
-    values = readings_sheet.get('C2:D')  # Plant, Machine only, skip header row
-    idx = []
-    for i, row in enumerate(values):
-        row_num = i + 2  # +2: 1-indexed sheet rows, plus header row
-        plant_v = row[0] if len(row) > 0 else ""
-        machine_v = row[1] if len(row) > 1 else ""
-        if plant_v or machine_v:
-            idx.append((plant_v, machine_v, row_num))
-    _plant_machine_index_cache = {"data": idx, "ts": now}
-    logging.info(f"✅ Refreshed plant/machine index: {len(idx)} rows indexed")
+    cache = _plant_machine_index_cache
+    if not force and cache["data"] is not None and (now - cache["ts"]) < INDEX_CACHE_TTL:
+        return cache["data"]
+    idx, last_row = _build_index_sync()
+    _plant_machine_index_cache = {"data": idx, "ts": now, "last_row": last_row}
+    logging.info(f"✅ Refreshed plant/machine index: {len(idx)} rows indexed (last row {last_row}) | {memory_mb()}")
     return idx
+
+
+def _parse_updated_rows(api_response):
+    """Row numbers written by append_row(s), from 'Readings!A40001:V40034'. None if unknown."""
+    try:
+        rng = api_response["updates"]["updatedRange"]
+        cells = rng.split("!")[-1]
+        first, _, last = cells.partition(":")
+        start = int("".join(ch for ch in first if ch.isdigit()))
+        end = int("".join(ch for ch in (last or first) if ch.isdigit()))
+        return start, end
+    except Exception:
+        return None
+
+
+def _register_written_docs(docs, api_response):
+    """After a write: extend the index in place and update latest-per-motor."""
+    for d in docs:
+        _latest_by_motor[_latest_key(d)] = d
+    cache = _plant_machine_index_cache
+    rows = _parse_updated_rows(api_response) if api_response else None
+    if cache["data"] is not None and rows and (rows[1] - rows[0] + 1) == len(docs):
+        intern = sys.intern
+        for offset, d in enumerate(docs):
+            cache["data"].append((
+                intern(str(d.get("plant", ""))), intern(str(d.get("machine", ""))),
+                rows[0] + offset, intern(str(d.get("motor", ""))),
+            ))
+        cache["last_row"] = max(cache.get("last_row", 1), rows[1])
+    else:
+        # could not tell where the rows landed -> rebuild on next use
+        cache["data"] = None
+
+
+async def build_latest_by_motor():
+    """Newest row of every (plant, machine, motor) - about 300 rows, fetched by row number."""
+    global _latest_by_motor, _latest_ready
+    idx = await get_plant_machine_index()
+    last_row_of = {}
+    for (p, m, row_num, motor) in idx:  # sheet is append-only -> later row = newer
+        last_row_of[(p, m, _motor_key(motor))] = row_num
+    docs = _fetch_rows(list(last_row_of.values()))
+    latest = {}
+    for d in docs:
+        key = _latest_key(d)
+        old = latest.get(key)
+        if old is None or str(d.get("timestamp", "")) >= str(old.get("timestamp", "")):
+            latest[key] = d
+    _latest_by_motor = latest
+    _latest_ready = True
+    logging.info(f"✅ Latest-per-motor table: {len(latest)} motors | {memory_mb()}")
+
+
+def latest_docs():
+    """Newest reading per motor. Falls back to the 500-row cache if not built yet."""
+    if _latest_ready and _latest_by_motor:
+        return list(_latest_by_motor.values())
+    latest = {}
+    for r in readings_cache:
+        key = _latest_key(r)
+        ts = r.get("Timestamp", r.get("timestamp", ""))
+        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
+            latest[key] = r
+    return list(latest.values())
+
+
+def memory_mb() -> str:
+    """Current and peak memory of this process (Linux), for logs and /api/debug/memory."""
+    try:
+        with open("/proc/self/status") as f:
+            info = {line.split(":")[0]: line.split(":")[1].strip() for line in f if ":" in line}
+        rss = int(info.get("VmRSS", "0 kB").split()[0]) // 1024
+        peak = int(info.get("VmHWM", "0 kB").split()[0]) // 1024
+        return f"memory {rss} MB (peak {peak} MB of 512)"
+    except Exception:
+        return "memory n/a"
+
+
+@api_router.get("/debug/memory")
+async def debug_memory():
+    """Open in a browser to see memory use without Render logs."""
+    cache = _plant_machine_index_cache
+    return {
+        "memory": memory_mb(),
+        "index_rows": len(cache["data"]) if cache["data"] is not None else None,
+        "index_age_seconds": round(datetime.now(IST).timestamp() - cache["ts"]) if cache["ts"] else None,
+        "sheet_last_row": cache.get("last_row"),
+        "latest_motors": len(_latest_by_motor),
+        "recent_cache_rows": len(readings_cache),
+    }
 
 
 @api_router.get("/debug/plant-machines")
@@ -733,11 +912,11 @@ async def debug_plant_machines(plant: str = "K"):
     idx = await get_plant_machine_index()
     total_rows = len(idx)
     last_5_overall = idx[-5:] if idx else []
-    matches_for_plant = [(p, m, r) for (p, m, r) in idx if p == plant]
-    unique_machines = sorted(set(m for (p, m, r) in idx if p == plant))
+    matches_for_plant = [(p, m, r) for (p, m, r, _mo) in idx if p == plant]
+    unique_machines = sorted(set(m for (p, m, r, _mo) in idx if p == plant))
     return {
         "total_indexed_rows": total_rows,
-        "last_5_rows_in_index_overall": [{"plant": repr(p), "machine": repr(m), "row": r} for (p, m, r) in last_5_overall],
+        "last_5_rows_in_index_overall": [{"plant": repr(p), "machine": repr(m), "row": r} for (p, m, r, _mo) in last_5_overall],
         "unique_machines_for_plant": [repr(m) for m in unique_machines],
         "matching_rows_for_plant": len(matches_for_plant),
         "sample_matches": [{"plant": repr(p), "machine": repr(m), "row": r} for (p, m, r) in matches_for_plant[:5]],
@@ -758,7 +937,7 @@ async def debug_machine_fetch(plant: str, machine: str, limit: int = 500):
         return {"error": "Sheets not connected"}
 
     idx = await get_plant_machine_index()
-    matching_rows = [row_num for (p, m, row_num) in idx if p == plant and m == machine]
+    matching_rows = [row_num for (p, m, row_num, _mo) in idx if p == plant and m == machine]
     result = {"matching_rows_found": len(matching_rows)}
     if not matching_rows:
         result["note"] = "No rows matched this plant+machine in the index."
@@ -780,14 +959,14 @@ async def debug_machine_fetch(plant: str, machine: str, limit: int = 500):
         start = prev = r
     ranges_bounds.append((start, prev))
     result["num_merged_ranges"] = len(ranges_bounds)
-    result["sample_ranges"] = [f"A{s}:T{e}" for (s, e) in ranges_bounds[:5]]
+    result["sample_ranges"] = [f"A{s}:{LAST_COL}{e}" for (s, e) in ranges_bounds[:5]]
 
     try:
         CHUNK = 40
         total_rows_fetched = 0
         for i in range(0, len(ranges_bounds), CHUNK):
             chunk = ranges_bounds[i:i + CHUNK]
-            ranges = [f"A{s}:T{e}" for (s, e) in chunk]
+            ranges = [f"A{s}:{LAST_COL}{e}" for (s, e) in chunk]
             batch_results = readings_sheet.batch_get(ranges)
             for block in batch_results:
                 if block:
@@ -814,7 +993,7 @@ def _rows_to_dicts(row_blocks):
             d = {}
             for i, key in enumerate(FIELD_KEYS):
                 val = row_vals[i] if i < len(row_vals) else ""
-                if key == "has_photo" or key == "bulk_entry":
+                if key in _BOOL_KEYS:
                     val = (val == "Yes")  # sheet stores these as "Yes"/"No" text
                 d[key] = val
             data.append(d)
@@ -837,32 +1016,20 @@ async def get_machine_history_targeted(plant: str, machine: str, limit: int = 50
          collapse into ONE range covering all 20, in one API call.
     """
     idx = await get_plant_machine_index()
-    matching_rows = [row_num for (p, m, row_num) in idx if p == plant and m == machine]
+    matching_rows = [row_num for (p, m, row_num, _mo) in idx if p == plant and m == machine]
     if not matching_rows:
         return []
 
     if len(matching_rows) > limit:
         matching_rows = matching_rows[-limit:]  # most recent (tail of the sheet)
 
-    # Merge consecutive row numbers into (start, end) ranges
-    ranges_bounds = []
-    start = prev = matching_rows[0]
-    for r in matching_rows[1:]:
-        if r == prev + 1:
-            prev = r
-            continue
-        ranges_bounds.append((start, prev))
-        start = prev = r
-    ranges_bounds.append((start, prev))
-
-    CHUNK = 40  # ranges per batch_get call (not rows - each range can span many rows now)
-    data = []
-    for i in range(0, len(ranges_bounds), CHUNK):
-        chunk = ranges_bounds[i:i + CHUNK]
-        ranges = [f"A{s}:T{e}" for (s, e) in chunk]
-        results = readings_sheet.batch_get(ranges)
-        data.extend(_rows_to_dicts(results))
-    return data
+    data = _fetch_rows(matching_rows)
+    # safety: if rows were deleted/moved by hand since the index was built,
+    # drop anything that is not this plant+machine and rebuild the index next time
+    good = [d for d in data if d.get("plant") == plant and d.get("machine") == machine]
+    if len(good) != len(data):
+        _plant_machine_index_cache["data"] = None
+    return good
 
 
 @api_router.get("/condition-monitoring/machine/{plant}/{machine}")
@@ -892,14 +1059,8 @@ async def get_machine_data(plant: str, machine: str, limit: int = 500):
 async def get_active_alarms():
     if not cache_loaded:
         await load_cache_from_sheets()
-    latest = {}
-    for r in readings_cache:
-        key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
-        ts = r.get("Timestamp", r.get("timestamp", ""))
-        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
-            latest[key] = r
     alarms = []
-    for r in latest.values():
+    for r in latest_docs():
         if r.get("Status", r.get("status", "")) == "Alarm":
             alarms.append({
                 "plant": r.get("Plant", r.get("plant", "")), "machine": r.get("Machine", r.get("machine", "")),
@@ -920,16 +1081,10 @@ async def get_active_alarms():
 async def get_machine_health(plant: str):
     if not cache_loaded:
         await load_cache_from_sheets()
-    latest = {}
-    for r in readings_cache:
+    machines = {}
+    for r in latest_docs():
         if r.get("Plant", r.get("plant", "")) != plant:
             continue
-        key = f"{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
-        ts = r.get("Timestamp", r.get("timestamp", ""))
-        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
-            latest[key] = r
-    machines = {}
-    for r in latest.values():
         m = r.get("Machine", r.get("machine", ""))
         if m not in machines:
             machines[m] = {"ok": 0, "warning": 0, "alarm": 0, "total": 0}
@@ -949,14 +1104,8 @@ async def get_machine_health(plant: str):
 async def get_plant_health():
     if not cache_loaded:
         await load_cache_from_sheets()
-    latest = {}
-    for r in readings_cache:
-        key = f"{r.get('Plant', r.get('plant', ''))}_{r.get('Machine', r.get('machine', ''))}_{r.get('Motor', r.get('motor', ''))}"
-        ts = r.get("Timestamp", r.get("timestamp", ""))
-        if key not in latest or ts > latest[key].get("Timestamp", latest[key].get("timestamp", "")):
-            latest[key] = r
     plants = {}
-    for r in latest.values():
+    for r in latest_docs():
         p = r.get("Plant", r.get("plant", ""))
         if p not in plants:
             plants[p] = {"ok": 0, "warning": 0, "alarm": 0, "total": 0}
@@ -976,7 +1125,7 @@ async def get_plant_health():
 async def get_stats():
     if not cache_loaded:
         await load_cache_from_sheets()
-    return {"total_readings": len(readings_cache), "google_sheets_connected": config_ready, "cloudinary_connected": CLOUDINARY_ENABLED, "cache_loaded": cache_loaded}
+    return {"total_readings": len(readings_cache), "google_sheets_connected": config_ready, "cloudinary_connected": CLOUDINARY_ENABLED, "cache_loaded": cache_loaded, "latest_motors": len(_latest_by_motor), "memory": memory_mb()}
 
 @api_router.post("/send-daily-report")
 async def trigger_send_daily_report():
@@ -1038,7 +1187,7 @@ async def startup():
     await load_cache_from_sheets()
     asyncio.create_task(self_ping())
     asyncio.create_task(daily_report_scheduler())
-    logging.info("🚀 Condition Monitoring System started")
+    logging.info(f"🚀 Condition Monitoring System started | {memory_mb()}")
 
 app.include_router(api_router)
 
