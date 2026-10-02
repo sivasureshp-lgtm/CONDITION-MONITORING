@@ -1090,7 +1090,10 @@
             "Sec5 Pusher Finger",
             "Sec6 Takeout",
             "Sec6 Pusher Arm",
-            "Sec6 Pusher Finger"
+            "Sec6 Pusher Finger",
+            "Stacker X",
+            "Stacker Y",
+            "Stacker Z"
           ],
           "parameters": [
             "current"
@@ -1192,6 +1195,18 @@
             "Sec6 Pusher Finger": {
               "normal_current": 2,
               "warning_current": 3
+            },
+            "Stacker X": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Stacker Y": {
+              "normal_current": 2,
+              "warning_current": 3
+            },
+            "Stacker Z": {
+              "normal_current": 5,
+              "warning_current": 6
             }
           }
         }
