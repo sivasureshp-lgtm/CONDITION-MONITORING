@@ -41,7 +41,7 @@ load_dotenv(ROOT_DIR / '.env')
 GMAIL_SENDER = os.environ.get('GMAIL_SENDER', 'sivasuresh.p@gmail.com')
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
 REPORT_RECIPIENTS = [r.strip() for r in os.environ.get('REPORT_RECIPIENTS', 'suresh.perumalla@gerresheimer.com').split(',') if r.strip()]
-REPORT_CC = [r.strip() for r in os.environ.get('REPORT_CC', 'makrand.kshirsagar@gerresheimer.com,anish.k@gerresheimer.com').split(',') if r.strip()]
+REPORT_CC = [r.strip() for r in os.environ.get('REPORT_CC', 'makrand.kshirsagar@gerresheimer.com,anish.k@gerresheimer.com',ramakrishna.vasa@gerresheimer.com').split(',') if r.strip()]
 REPORT_SEND_HOUR_IST = int(os.environ.get('REPORT_SEND_HOUR_IST', '7'))
 REPORT_SEND_MINUTE_IST = int(os.environ.get('REPORT_SEND_MINUTE_IST', '10'))
 
